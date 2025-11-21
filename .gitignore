@@ -1,6 +1,7 @@
 # custom
 test_data/
 *.prof
+out/
 
 # nextflow
 nf/work
