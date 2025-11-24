@@ -19,7 +19,10 @@ find "$IN_DIR" -name '*HA_cns.fa' \
 | sort \
 | uniq \
 | head -n "$N_SAMPLES" \
-| xargs cat > "$CONCAT_FA"
+| xargs cat \
+| sed 's/Consensus_//g' \
+| sed 's/_cns_threshold_0.75_quality_20//g' \
+> "$CONCAT_FA"
 
 # align
 ALIGNED_FA="$OUT_DIR/aligned.fa"
