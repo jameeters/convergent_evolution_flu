@@ -5,18 +5,17 @@ import json
 from datetime import date
 import pandas as pd
 
-msa_file = 'out/aligned.fa'
+sras_file = 'sras.txt'
+
+
 muninn_url = 'http://kenny.scripps.edu:8000'
 max_collection_span = pd.Timedelta(30, 'd')
 out_file = 'out/sample_metadata.tsv'
 
 # get sras
 sras = set()
-with open(msa_file, 'r') as f:
-    for l in f.readlines():
-        if l.startswith('>'):
-            sra = l.strip().strip('>').strip('_HA')
-            sras.add(sra)
+with open(sras_file, 'r') as f:
+    sras = {l.strip() for l in f.readlines()}
 
 # get sample data
 

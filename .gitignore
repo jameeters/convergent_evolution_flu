@@ -2,6 +2,8 @@
 test_data/
 *.prof
 out/
+data/
+*.Rproj
 
 # nextflow
 nf/work
@@ -184,3 +186,4 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+.Rproj.user
