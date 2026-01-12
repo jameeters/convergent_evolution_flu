@@ -1,13 +1,65 @@
 from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+import gffpandas.gffpandas as gffpd
+from pathlib import Path
+import subprocess
 
-input_file = 'out/playground/test.fa'
 
+
+gff_file = 'data/HA.gff3'
+ref_fasta = 'data/HA_reference.fasta'
+
+ancestral_seqs_fasta = 'out/ancestral/ancestral_sequences.fasta'
+
+ref_aligned_output = 'out/translation/ref_aligned_nt.fasta'
+
+Path('out/translation').mkdir(exist_ok=True)
+
+mafft_command = [
+    'mafft',
+    '--auto',
+    '--keeplength', 
+    '--addfragments',
+    ancestral_seqs_fasta,
+    ref_fasta
+]
+with open(ref_aligned_output, 'w+') as f:
+    subprocess.run(mafft_command, stdout=f)
+
+# Read GFF, get slice indices for CDS
+cds_data = gffpd.read_gff3(gff_file).filter_feature_of_type(['CDS'])
+
+slices = []
+for row in cds_data.df.iterrows():
+    cds = row[1]
+    start = cds['start']
+    phase = cds['phase']
+    start += int(phase)
+    end = cds['end']
+    # convert to slice coordinates: zero indexed, half open
+    slices.append((start-1, end))
+
+# read aligned nt seqs
 seqs = []
-with open(input_file, 'r') as f:
-	seqs = [s for s in SeqIO.parse(f, 'fasta')]
+with open(ref_aligned_output, 'r') as f:
+    seqs = [s for s in SeqIO.parse(f, 'fasta')]
 
+# apply slices based on CDS and translate
+coding_seqs = []
+aa_seqs = []
 for s in seqs:
-	s.seq = s.seq.translate()
+    coding = Seq('')
+    for start, end in slices:
+        coding += s.seq[start:end]
+    to_translate = SeqRecord(coding, id=s.id, name=s.name, description=s.description)
+    coding_seqs.append(to_translate)
 
-with open('out/playground/amino_acids.fa', 'w+') as f:
-	SeqIO.write(seqs, f, 'fasta')
+    translated = SeqRecord(coding.translate(), id=s.id, name=s.name, description=s.description)
+    aa_seqs.append(translated)
+
+with open('out/translation/coding_seqs.fasta', 'w+') as f:
+    SeqIO.write(coding_seqs, f, 'fasta')
+
+with open('out/translation/amino_acids.fasta', 'w+') as f:
+    SeqIO.write(aa_seqs, f, 'fasta')
