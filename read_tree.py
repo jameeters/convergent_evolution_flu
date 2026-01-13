@@ -36,6 +36,9 @@ class Mut(NamedTuple):
         return f'Mut({str(self)})'
 
 
+Count_n_s = namedtuple('Count_n_s', ['count_n', 'count_s', 'ratio'])
+
+
 def compare_aa_seqs(base: toytree.Node, sample: toytree.Node) -> set(Mut):
     base_seq = base.aa_seq
     sample_seq = sample.aa_seq
@@ -60,11 +63,18 @@ def compare_codons(base: toytree.Node, sample: toytree.Node) -> set(Mut):
         if ref != alt and alt != 'nnn':
             ref_aa = Seq(ref).translate()
             alt_aa = Seq(alt).translate()
+            if alt_aa == 'X':
+                continue
             pos_aa = (i/3) + 1
             assert pos_aa == int(pos_aa)
             pos_aa = int(pos_aa)
             muts.add(CodonMut(ref, alt, i+1, ref_aa, alt_aa, pos_aa))
     return muts
+
+def check_codons_and_amino_acids(node: toytree.Node):
+    for cm in node.new_codon_muts:
+        if not cm.is_synonymous():
+            assert Mut(ref=cm.ref_aa, alt=cm.alt_aa, pos=cm.pos_aa) in node.new_aa_muts
 
 
 with open('out/ancestral/annotated_tree.nexus', 'r') as f:
@@ -115,6 +125,9 @@ direct_toytree = direct_toytree.set_node_data(feature='count_new_aa_muts', data=
 direct_toytree = direct_toytree.set_node_data(feature='new_aa_muts', data=new_aa_muts_by_name, default=set())
 direct_toytree = direct_toytree.set_node_data(feature='new_codon_muts', data=new_codon_muts_by_name, default=set())
 
+for node in direct_toytree:
+    check_codons_and_amino_acids(node)
+
 count_s_by_site = dict()
 count_n_by_site = dict()
 for mut_set in new_codon_muts_by_name.values():
@@ -132,9 +145,11 @@ for mut_set in new_codon_muts_by_name.values():
             except KeyError:
                 count_n_by_site[site] = 1
             
-pprint(count_n_by_site)
-print('*'*20)
-pprint(count_s_by_site)
+dn_ds_by_site = dict()
+for site in set(count_n_by_site.keys()).intersection(set(count_s_by_site.keys())):
+    dn_ds_by_site[site] = Count_n_s(count_n=count_n_by_site[site], count_s=count_s_by_site[site], ratio=count_n_by_site[site]/count_s_by_site[site])
+
+pprint(dn_ds_by_site)
 
 leaf_aa_muts_from_root_by_name = dict()
 for leaf in direct_toytree.treenode.get_leaves():
@@ -157,48 +172,18 @@ for leaf in direct_toytree.treenode.get_leaves():
 
 distinct_emergences = {mut: len(set(v.values())) for mut, v in leaf_aa_muts_from_root_emergence.items()}
 
-# for mut, count in distinct_emergences.items():
-#     if count > 1:
-#         print(mut)
-#         pprint(leaf_aa_muts_from_root_emergence[mut])
-
-new_a172t = {node.name: True for node in direct_toytree if Mut('A', 172, 'T') in node.new_aa_muts}
-direct_toytree = direct_toytree.set_node_data(feature='has_A172T', data=new_a172t, inherit=True, default=False)
-
-# canvas, axes, mark = direct_toytree.draw(
-#     tip_labels=True,
-#     height=8000,
-#     width=4000,
-#     tip_labels_style={ "font-size": "8px",},
-#     node_colors=('count_new_aa_muts', 'BlueRed'),
-#     node_sizes=10,
-#     node_mask=False,
-#     node_labels='count_new_aa_muts',
-#     node_labels_style={'font-size': '8px', 'fill': '#66aa66'},
-#     node_style={'stroke': None},
-# )
 
 canvas, axes, mark = direct_toytree.draw(
     tip_labels=True,
     height=8000,
     width=4000,
     tip_labels_style={ "font-size": "8px",},
-    node_colors=('has_A172T', 'BlueRed'),
-    node_sizes=5,
+    node_colors=('count_new_aa_muts', 'BlueRed'),
+    node_sizes=10,
     node_mask=False,
-    node_labels=None,
+    node_labels='count_new_aa_muts',
     node_labels_style={'font-size': '8px', 'fill': '#66aa66'},
     node_style={'stroke': None},
 )
 
 toytree.save(canvas, "/tmp/drawing.svg")
-
-
-
-# print(direct_toytree.features)
-# for node in direct_toytree:
-#     try:
-#         if len(node.new_nt_muts) > 0:
-#             print(f'{node.name} :: {node.new_nt_muts}')
-#     except AttributeError:
-#         pass
