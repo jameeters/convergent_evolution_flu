@@ -4,6 +4,7 @@ test_data/
 out/
 data/
 *.Rproj
+*.md.html
 
 # nextflow
 nf/work

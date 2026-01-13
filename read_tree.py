@@ -7,6 +7,11 @@ from pprint import pprint
 from Bio.Seq import Seq
 
 
+# Inputs
+tree_file = 'out/ancestral/annotated_tree.nexus'
+nt_seqs_filename = 'out/translation/coding_seqs.fasta'
+aa_seqs_filename = 'out/translation/amino_acids.fasta'
+
 class CodonMut(NamedTuple):
     ref_nt: str
     alt_nt: str
@@ -77,10 +82,10 @@ def check_codons_and_amino_acids(node: toytree.Node):
             assert Mut(ref=cm.ref_aa, alt=cm.alt_aa, pos=cm.pos_aa) in node.new_aa_muts
 
 
-with open('out/ancestral/annotated_tree.nexus', 'r') as f:
+with open(tree_file, 'r') as f:
     direct_toytree = toytree.tree(f.read())
 
-nt_seqs_filename = 'out/translation/coding_seqs.fasta'
+
 nt_seq_by_name = dict()
 with open(nt_seqs_filename, 'r') as f:
             nt_seqs = [s for s in SeqIO.parse(f, 'fasta')]
@@ -93,7 +98,6 @@ with open(nt_seqs_filename, 'r') as f:
 direct_toytree = direct_toytree.set_node_data(feature='nt_seq', data=nt_seq_by_name)
 
 
-aa_seqs_filename = 'out/translation/amino_acids.fasta'
 aa_seq_by_name = dict()
 with open(aa_seqs_filename, 'r') as f:
             aa_seqs = [s for s in SeqIO.parse(f, 'fasta')]
