@@ -4,7 +4,25 @@ import toytree
 import toyplot
 from typing import NamedTuple
 from pprint import pprint
+from Bio.Seq import Seq
 
+
+class CodonMut(NamedTuple):
+    ref_nt: str
+    alt_nt: str
+    pos_start_nt: int
+    ref_aa: str
+    alt_aa: str
+    pos_aa: int
+
+    def is_synonymous(self) -> bool:
+        return self.ref_aa == self.alt_aa
+
+    def __str__(self):
+        return f'{self.ref_nt}({self.ref_aa}) {self.pos_start_nt}({self.pos_aa}) {self.alt_nt}({self.alt_aa})'
+
+    def __repr__(self):
+        return f'CodonMut({str(self)})'
 
 class Mut(NamedTuple):
     ref: str
@@ -29,14 +47,23 @@ def compare_aa_seqs(base: toytree.Node, sample: toytree.Node) -> set(Mut):
     return muts
 
 
-def compare_nt_seq(base: toytree.Node, sample: toytree.Node) -> set(Mut):
+def compare_codons(base: toytree.Node, sample: toytree.Node) -> set(Mut):
     base_seq = base.nt_seq
     sample_seq = sample.nt_seq
     assert len(base_seq) == len(sample_seq)
     muts = set()
-    for i in range(len(sample_seq)):
-            if sample_seq[i] != base_seq[i] and sample_seq[i] != 'N':
-                muts.add(Mut(base_seq[i], i+1, sample_seq[i]))
+
+    for i in range(0, len(sample_seq), 3):
+        ref = base_seq[i:i+3]
+        alt = sample_seq[i:i+3]
+
+        if ref != alt and alt != 'nnn':
+            ref_aa = Seq(ref).translate()
+            alt_aa = Seq(alt).translate()
+            pos_aa = (i/3) + 1
+            assert pos_aa == int(pos_aa)
+            pos_aa = int(pos_aa)
+            muts.add(CodonMut(ref, alt, i+1, ref_aa, alt_aa, pos_aa))
     return muts
 
 
@@ -48,14 +75,15 @@ nt_seq_by_name = dict()
 with open(nt_seqs_filename, 'r') as f:
             nt_seqs = [s for s in SeqIO.parse(f, 'fasta')]
             for s in nt_seqs:
+                if s.name == 'HA|PP755589.1|A/cattle/Texas/24-008749-003/2024(H5N1)':
+                    continue
                 seq = s.seq
                 nt_seq_by_name[s.name] = seq
 
 direct_toytree = direct_toytree.set_node_data(feature='nt_seq', data=nt_seq_by_name)
 
-# todo: this should come from a real source.
-aa_seqs_filename = 'out/playground/amino_acids.fasta'
 
+aa_seqs_filename = 'out/translation/amino_acids.fasta'
 aa_seq_by_name = dict()
 with open(aa_seqs_filename, 'r') as f:
             aa_seqs = [s for s in SeqIO.parse(f, 'fasta')]
@@ -70,23 +98,43 @@ direct_toytree = direct_toytree.set_node_data(feature='aa_seq', data=aa_seq_by_n
 
 # compare parents to children
 new_aa_muts_by_name = dict()
-new_nt_muts_by_name = dict()
+new_codon_muts_by_name = dict()
 for node in direct_toytree:
     parent = node.up
     aa_muts = set()
-    nt_muts = set()
+    codon_muts = set()
     if parent is not None:
         aa_muts = compare_aa_seqs(base=parent, sample=node)
-        nt_muts = compare_nt_seq(base=parent, sample=node)
+        codon_muts = compare_codons(base=parent, sample=node)
     new_aa_muts_by_name[node.name] = aa_muts
-    new_nt_muts_by_name[node.name] = nt_muts
-
+    new_codon_muts_by_name[node.name] = codon_muts
 
 
 count_new_aa_muts_by_name = {k: len(v) for k, v in new_aa_muts_by_name.items()}
 direct_toytree = direct_toytree.set_node_data(feature='count_new_aa_muts', data=count_new_aa_muts_by_name, default=0)
 direct_toytree = direct_toytree.set_node_data(feature='new_aa_muts', data=new_aa_muts_by_name, default=set())
-direct_toytree = direct_toytree.set_node_data(feature='new_nt_muts', data=new_nt_muts_by_name, default=set())
+direct_toytree = direct_toytree.set_node_data(feature='new_codon_muts', data=new_codon_muts_by_name, default=set())
+
+count_s_by_site = dict()
+count_n_by_site = dict()
+for mut_set in new_codon_muts_by_name.values():
+    for mut in mut_set:
+        site = mut.pos_aa
+        
+        if mut.is_synonymous():
+            try:
+                count_s_by_site[site] += 1
+            except KeyError:
+                count_s_by_site[site] = 1
+        else:
+            try:
+                count_n_by_site[site] += 1
+            except KeyError:
+                count_n_by_site[site] = 1
+            
+pprint(count_n_by_site)
+print('*'*20)
+pprint(count_s_by_site)
 
 leaf_aa_muts_from_root_by_name = dict()
 for leaf in direct_toytree.treenode.get_leaves():
@@ -147,10 +195,10 @@ toytree.save(canvas, "/tmp/drawing.svg")
 
 
 
-print(direct_toytree.features)
-for node in direct_toytree:
-    try:
-        if len(node.new_nt_muts) > 0:
-            print(f'{node.name} :: {node.new_nt_muts}')
-    except AttributeError:
-        pass
+# print(direct_toytree.features)
+# for node in direct_toytree:
+#     try:
+#         if len(node.new_nt_muts) > 0:
+#             print(f'{node.name} :: {node.new_nt_muts}')
+#     except AttributeError:
+#         pass
