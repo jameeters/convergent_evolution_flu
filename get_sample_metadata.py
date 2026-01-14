@@ -9,20 +9,16 @@ sras_file = 'data/sras.txt'
 
 
 muninn_url = 'http://kenny.scripps.edu:8000'
+# muninn_url = 'https://h5n1.outbreak.info/api'
 max_collection_span = pd.Timedelta(30, 'd')
 out_file = 'out/sample_metadata.tsv'
 
 # get sras
-sras = set()
+sras: list[str]
 with open(sras_file, 'r') as f:
-    sras = {l.strip() for l in f.readlines()}
+    sras = [l.strip() for l in f.readlines()]
 
 # get sample data
-
-query = '|'.join([f'accession={s}' for s in sras])
-
-resp = requests.get(f'{muninn_url}/samples?q={query}')
-
 keep_keys = [
     'accession',
     'collection_start_date',
@@ -33,14 +29,23 @@ keep_keys = [
     'geo_admin2_name',
     'geo_admin3_name',
 ]
+stride = 250
+metadata: pd.DataFrame = pd.DataFrame()
+for i in range(0, len(sras), stride):
+    chunk = sras[i:i+stride]
+    query = '|'.join([f'accession={s}' for s in chunk])
 
-metadata = pd.DataFrame.from_dict(json.loads(resp.text))[keep_keys]
+    resp = requests.get(f'{muninn_url}/samples?q={query}')
+    print(resp)
+
+    metadata_chunk = pd.DataFrame.from_dict(json.loads(resp.text))[keep_keys]
+    metadata = pd.concat([metadata, metadata_chunk], ignore_index=True)
 
 metadata['collection_start_date'] = pd.to_datetime(metadata['collection_start_date'])
 metadata['collection_end_date'] = pd.to_datetime(metadata['collection_end_date'])
 
 metadatas_present_sras = set(metadata['accession'])
-missing_metadata_sras = sras - metadatas_present_sras
+missing_metadata_sras = set(sras) - metadatas_present_sras
 
 if len(missing_metadata_sras) > 0:
     print(f'warning: {len(missing_metadata_sras)} SRAs are missing from muninn: {missing_metadata_sras}')
