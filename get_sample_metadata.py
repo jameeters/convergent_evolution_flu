@@ -5,7 +5,7 @@ import json
 from datetime import date
 import pandas as pd
 
-sras_file = 'sras.txt'
+sras_file = 'data/sras.txt'
 
 
 muninn_url = 'http://kenny.scripps.edu:8000'
