@@ -8,7 +8,7 @@ fi
 
 treetime \
 --tree "out/genomic_tree.treefile" \
---aln "out/aligned.fa" \
+--aln "out/ref_aligned_samples_only.fasta" \
 --dates "out/sample_metadata.tsv" \
 --name-column "accession" \
 --date-column "stardate" \

@@ -6,6 +6,6 @@ fi
 
 treetime ancestral \
 --tree "out/treetime/timetree.nexus" \
---aln "out/aligned.fa" \
+--aln "out/ref_aligned_samples_only.fasta" \
 --outdir "$OUT_DIR" \
 --report-ambiguous

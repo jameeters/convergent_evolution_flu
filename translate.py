@@ -12,20 +12,8 @@ ref_fasta = 'data/HA_reference.fasta'
 
 ancestral_seqs_fasta = 'out/ancestral/ancestral_sequences.fasta'
 
-ref_aligned_output = 'out/translation/ref_aligned_nt.fasta'
-
 Path('out/translation').mkdir(exist_ok=True)
 
-mafft_command = [
-    'mafft',
-    '--auto',
-    '--keeplength', 
-    '--addfragments',
-    ancestral_seqs_fasta,
-    ref_fasta
-]
-with open(ref_aligned_output, 'w+') as f:
-    subprocess.run(mafft_command, stdout=f)
 
 # Read GFF, get slice indices for CDS
 cds_data = gffpd.read_gff3(gff_file).filter_feature_of_type(['CDS'])
@@ -34,20 +22,17 @@ slices = []
 for row in cds_data.df.iterrows():
     cds = row[1]
     start = cds['start']
-    phase = cds['phase']
-    start += int(phase)
     end = cds['end']
     # convert to slice coordinates: zero indexed, half open
     slices.append((start-1, end))
 
 # read aligned nt seqs
 seqs = []
-with open(ref_aligned_output, 'r') as f:
+with open(ancestral_seqs_fasta, 'r') as f:
     seqs = [s for s in SeqIO.parse(f, 'fasta')]
 
 # apply slices based on CDS and translate
 coding_seqs = []
-
 for s in seqs:
     coding = Seq('')
     for start, end in slices:
