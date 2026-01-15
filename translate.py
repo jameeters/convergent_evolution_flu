@@ -47,19 +47,20 @@ with open(ref_aligned_output, 'r') as f:
 
 # apply slices based on CDS and translate
 coding_seqs = []
-aa_seqs = []
+
 for s in seqs:
     coding = Seq('')
     for start, end in slices:
         coding += s.seq[start:end]
-    to_translate = SeqRecord(coding, id=s.id, name=s.name, description=s.description)
-    coding_seqs.append(to_translate)
-
-    translated = SeqRecord(coding.translate(), id=s.id, name=s.name, description=s.description)
-    aa_seqs.append(translated)
+    coding_seqs.append(SeqRecord(coding, id=s.id, name=s.name, description=s.description))
 
 with open('out/translation/coding_seqs.fasta', 'w+') as f:
     SeqIO.write(coding_seqs, f, 'fasta')
+
+aa_seqs = []
+for s in coding_seqs:
+    translated = SeqRecord(s.seq.translate(), id=s.id, name=s.name, description=s.description)
+    aa_seqs.append(translated)
 
 with open('out/translation/amino_acids.fasta', 'w+') as f:
     SeqIO.write(aa_seqs, f, 'fasta')
