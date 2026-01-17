@@ -14,3 +14,4 @@ dates = dates %>%
   mutate(date = as.Date(ymd(date)))
 
 plot(treetime, show.tip.label=F)
+

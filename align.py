@@ -45,7 +45,7 @@ for sra, fasta in fasta_by_sra.items():
     with open(fasta, 'r') as f:
         contents = [s for s in SeqIO.parse(f, 'fasta')]
         assert len(contents) == 1 # check that file contains only one sequence
-        assert contents[0].id.find(sra) >= 0 # check that file name and contents match
+        assert sra in contents[0].id # check that file name and contents match
         contents[0].name = sra
         contents[0].id = sra
         contents[0].description = ''

@@ -4,7 +4,8 @@ from Bio.SeqRecord import SeqRecord
 import gffpandas.gffpandas as gffpd
 from pathlib import Path
 import subprocess
-
+from Bio.Data.CodonTable import TranslationError
+from utils.translation import translate_codonwise
 
 
 gff_file = 'data/HA.gff3'
@@ -13,6 +14,9 @@ ref_fasta = 'data/HA_reference.fasta'
 ancestral_seqs_fasta = 'out/ancestral/ancestral_sequences.fasta'
 
 Path('out/translation').mkdir(exist_ok=True)
+
+
+
 
 
 # Read GFF, get slice indices for CDS
@@ -44,7 +48,7 @@ with open('out/translation/coding_seqs.fasta', 'w+') as f:
 
 aa_seqs = []
 for s in coding_seqs:
-    translated = SeqRecord(s.seq.translate(), id=s.id, name=s.name, description=s.description)
+    translated = translate_codonwise(s)
     aa_seqs.append(translated)
 
 with open('out/translation/amino_acids.fasta', 'w+') as f:
