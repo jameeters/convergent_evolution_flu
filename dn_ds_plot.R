@@ -13,5 +13,5 @@ p = ggplot(mut_counts, aes(x=pos_aa, y=ratio)) +
   ggtitle('Selection in HA, bovine B3.13') +
   xlab('amino acid position') +
   ylab('dn/(ds+1)')
-
 print(p)
+

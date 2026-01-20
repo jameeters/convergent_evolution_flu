@@ -15,6 +15,7 @@ nt_seqs_filename = 'out/translation/coding_seqs.fasta'
 aa_seqs_filename = 'out/translation/amino_acids.fasta'
 
 # Outputs
+codon_mutation_counts_output_tsv = 'out/codon_mutation_counts_bovine_ha.tsv'
 dn_ds_output_tsv = 'out/dn_ds_by_site_bovine_ha.tsv'
 
 class CodonMut(NamedTuple):
@@ -27,6 +28,17 @@ class CodonMut(NamedTuple):
 
     def is_synonymous(self) -> bool:
         return self.ref_aa == self.alt_aa
+
+    def to_dict(self, count: int = -1) -> dict:
+        return {
+            'ref_nt': self.ref_nt,
+            'alt_nt': self.alt_nt,
+            'pos_start_nt': self.pos_start_nt,
+            'ref_aa': self.ref_aa,
+            'alt_aa': self.alt_aa,
+            'pos_aa': self.pos_aa,
+            'count': count
+        }
 
     def __str__(self):
         return f'{self.ref_nt}({self.ref_aa}) {self.pos_start_nt}({self.pos_aa}) {self.alt_nt}({self.alt_aa})'
@@ -138,6 +150,22 @@ direct_toytree = direct_toytree.set_node_data(feature='new_codon_muts', data=new
 for node in direct_toytree:
     check_codons_and_amino_acids(node)
 
+# ---------------------------------
+# output full codon mutation data
+# ---------------------------------
+codon_muts_counts = dict()
+
+for mut_set in new_codon_muts_by_name.values():
+    for mut in mut_set:
+        try:
+            codon_muts_counts[mut] += 1
+        except KeyError:
+            codon_muts_counts[mut] = 1
+temp = [mut.to_dict(count) for mut, count in codon_muts_counts.items()]
+codon_muts_counts_df = pd.DataFrame(data=temp)
+
+with open(codon_mutation_counts_output_tsv, 'w+') as f:
+    codon_muts_counts_df.to_csv(f, sep='\t', index=False)
 
 # ------------------------------------------------
 # count syn and non-syn mutations per site
