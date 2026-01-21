@@ -6,19 +6,37 @@ from pathlib import Path
 import subprocess
 import glob
 import os
+import argparse
+
+
+# settings
+ambiguous_bases_frac_limit = 0.01
+
+# arguments
+parser = argparse.ArgumentParser()
+# inputs
+parser.add_argument("sras_file")
+parser.add_argument("fastas_dir")
+parser.add_argument("ref_fasta")
+
+# outputs
+parser.add_argument('out_dir')
+parser.add_argument('out_aligned_ref_removed_fasta')
+
+args = parser.parse_args()
 
 # inputs
-sras_file = "data/sras.txt"
-fastas_dir = '/Users/james/Documents/avian-influenza/fasta'
-ambiguous_bases_frac_limit = 0.01
-ref_fasta = 'data/HA_reference.fasta'
+sras_file = args.sras_file
+fastas_dir = args.fastas_dir
+ref_fasta = args.ref_fasta
 
-# outputs todo: remove test
-out_dir = 'out'
+# outputs
+out_dir = args.out_dir
+
 concatenated_fasta = f"{out_dir}/concat.fasta"
 sras_qc_passed_file = f'{out_dir}/sras_qc_passed.txt'
 aligned_fasta = f'{out_dir}/ref_aligned.fasta'
-aligned_ref_removed_fasta = f'{out_dir}/ref_aligned_samples_only.fasta'
+aligned_ref_removed_fasta = args.out_aligned_ref_removed_fasta
 
 Path(out_dir).mkdir(exist_ok=True)
 

@@ -56,6 +56,8 @@ dn_ds_dms = mut_counts %>%
 
 p = ggplot(dn_ds_dms, aes(x=mean_dms_value, y=ratio)) +
   geom_point() +
+  ggtitle('HA, bovine B3.13') +
+  ylab('dn/(ds+1)') +
   facet_wrap(~dms_name, scales='free', ncol=4) +
   geom_text_repel(aes(label=pos_aa), max.overlaps=5, size=4)
 print(p)

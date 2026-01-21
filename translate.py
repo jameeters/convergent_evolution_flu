@@ -6,16 +6,27 @@ from pathlib import Path
 import subprocess
 from Bio.Data.CodonTable import TranslationError
 from utils.translation import translate_codonwise
+import argparse
 
+parser = argparse.ArgumentParser()
 
-gff_file = 'data/HA.gff3'
-ref_fasta = 'data/HA_reference.fasta'
+# inputs
+parser.add_argument('gff_file')
+parser.add_argument('ref_fasta')
+parser.add_argument('ancestral_seqs_fasta')
 
-ancestral_seqs_fasta = 'out/ancestral/ancestral_sequences.fasta'
+# outputs
+parser.add_argument('out_dir')
 
-Path('out/translation').mkdir(exist_ok=True)
+args = parser.parse_args()
 
+gff_file = args.gff_file
+ref_fasta = args.ref_fasta
+ancestral_seqs_fasta = args.ancestral_seqs_fasta
 
+out_dir = args.out_dir
+
+Path(out_dir).mkdir(exist_ok=True)
 
 
 
@@ -43,7 +54,7 @@ for s in seqs:
         coding += s.seq[start:end]
     coding_seqs.append(SeqRecord(coding, id=s.id, name=s.name, description=s.description))
 
-with open('out/translation/coding_seqs.fasta', 'w+') as f:
+with open(f'{out_dir}/coding_seqs.fasta', 'w+') as f:
     SeqIO.write(coding_seqs, f, 'fasta')
 
 aa_seqs = []
@@ -51,5 +62,5 @@ for s in coding_seqs:
     translated = translate_codonwise(s)
     aa_seqs.append(translated)
 
-with open('out/translation/amino_acids.fasta', 'w+') as f:
+with open(f'{out_dir}/amino_acids.fasta', 'w+') as f:
     SeqIO.write(aa_seqs, f, 'fasta')

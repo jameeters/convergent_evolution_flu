@@ -1,7 +1,7 @@
 # custom
 test_data/
 *.prof
-out/
+out*/
 data/
 *.Rproj
 *.md.html

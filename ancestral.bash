@@ -1,11 +1,15 @@
-OUT_DIR='out/ancestral'
+#! /bin/bash
+
+INPUT_TREEFILE=$1
+ALIGNMENT_FILE=$2
+OUT_DIR=$3
 
 if [[ ! -d "$OUT_DIR" ]]; then
 	mkdir "$OUT_DIR"
 fi
 
 treetime ancestral \
---tree "out/treetime/timetree.nexus" \
---aln "out/ref_aligned_samples_only.fasta" \
+--tree "$INPUT_TREEFILE" \
+--aln "$ALIGNMENT_FILE" \
 --outdir "$OUT_DIR" \
 --report-ambiguous

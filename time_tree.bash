@@ -1,15 +1,18 @@
 #! /bin/bash
 
-OUT_DIR='out/treetime'
+GENOMIC_TREEFILE=$1
+ALIGNMENT_FILE=$2
+METADATA_FILE=$3
+OUT_DIR=$4
 
 if [[ ! -d "$OUT_DIR" ]]; then
 	mkdir "$OUT_DIR"
 fi
 
 treetime \
---tree "out/genomic_tree.treefile" \
---aln "out/ref_aligned_samples_only.fasta" \
---dates "out/sample_metadata.tsv" \
+--tree "$GENOMIC_TREEFILE" \
+--aln "$ALIGNMENT_FILE" \
+--dates "$METADATA_FILE" \
 --name-column "accession" \
 --date-column "stardate" \
 --outdir "$OUT_DIR" \

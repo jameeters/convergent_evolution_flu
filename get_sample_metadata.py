@@ -4,14 +4,22 @@ import requests
 import json
 from datetime import date
 import pandas as pd
+import argparse
 
-sras_file = 'data/sras.txt'
+parser = argparse.ArgumentParser()
 
+parser.add_argument("sras_file")
+parser.add_argument("output_file")
+
+args = parser.parse_args()
+
+sras_file = args.sras_file
+out_file = args.output_file
 
 muninn_url = 'http://kenny.scripps.edu:8000'
 # muninn_url = 'https://h5n1.outbreak.info/api'
 max_collection_span = pd.Timedelta(30, 'd')
-out_file = 'out/sample_metadata.tsv'
+
 
 # get sras
 sras: list[str]

@@ -7,16 +7,28 @@ from pprint import pprint
 from Bio.Seq import Seq
 from utils.translation import translate_seq_codonwise
 import pandas as pd
+import argparse
 
+parser = argparse.ArgumentParser()
 
 # Inputs
-tree_file = 'out/ancestral/annotated_tree.nexus'
-nt_seqs_filename = 'out/translation/coding_seqs.fasta'
-aa_seqs_filename = 'out/translation/amino_acids.fasta'
+parser.add_argument('ancestral_out_dir')
+parser.add_argument('translation_out_dir')
+
 
 # Outputs
-codon_mutation_counts_output_tsv = 'out/codon_mutation_counts_bovine_ha.tsv'
-dn_ds_output_tsv = 'out/dn_ds_by_site_bovine_ha.tsv'
+parser.add_argument('out_dir')
+
+args = parser.parse_args()
+
+# Inputs
+tree_file = f'{args.ancestral_out_dir}/annotated_tree.nexus'
+nt_seqs_filename = f'{args.translation_out_dir}/coding_seqs.fasta'
+aa_seqs_filename = f'{args.translation_out_dir}/amino_acids.fasta'
+
+# Outputs
+codon_mutation_counts_output_tsv = f'{args.out_dir}/codon_mutation_counts_ha.tsv'
+dn_ds_output_tsv = f'{args.out_dir}/dn_ds_by_site_ha.tsv'
 
 class CodonMut(NamedTuple):
     ref_nt: str
