@@ -1,0 +1,160 @@
+---
+title: "flu_selection"
+output: html_document
+date: "2026-01-22"
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggrepel)
+library(stringr)
+
+theme_set(theme_bw())
+setwd('/Users/james/Documents/convergent')
+```
+```{r read_files, include=F}
+mutations = read.csv('out/codon_mutation_counts_bovine_ha.tsv', sep='\t') %>% 
+  mutate(host='bovine')
+
+mutations = full_join(
+  mutations,
+  read.csv('out_avian_b3.13/codon_mutation_counts_ha.tsv', sep='\t') %>% 
+    mutate(host='avian')
+)
+
+mutations = mutations %>% 
+  group_by(pos_aa, ref_aa, alt_aa, host) %>% 
+  summarize(count = sum(count))
+```
+
+The DMS value calculation is slightly different than before, but it doesn't make much difference.
+As before, we match DMS values with observed mutations by amino acid position, ref, and alt.
+But instead of using a simple average across all values for a given position, 
+we instead use a weighted average that favors the DMS values associated with mutations with more occurrences.
+```{r read_dms, include=F}
+dms_ha = read.csv('data/dms_data_ha.tsv', sep='\t') %>% 
+  rename(
+    pos_aa = position_aa,
+    dms_name = name,
+    dms_value = value,
+  ) %>% 
+  select(!c('ref_codon', 'alt_codon', 'gff_feature')) %>% 
+  filter(!dms_name %in% c('evescape_sigmoid', 'evescape')) %>% 
+  distinct()
+
+# match dms to mutations by amino acid pos, ref, and alt.
+# so dms values for mutations not seen in our data are not considered, even if 
+# we see other mutations at the same position.
+dms_by_mutation = 
+  left_join(
+    mutations, 
+    dms_ha, 
+    by=c('pos_aa', 'ref_aa', 'alt_aa'),
+    relationship='many-to-many'
+  )
+  
+# Weighted average of DMS values 
+# only results in minor changes compared to naive average
+dms_by_position = dms_by_mutation %>% 
+  filter(!is.na(dms_name)) %>% 
+  group_by(pos_aa, dms_name, host) %>% 
+  summarize(
+    wt_mean_dms_value = sum(count * dms_value)/sum(count),
+    mean_dms_value = mean(dms_value),
+    min_dms_value = min(dms_value),
+    max_dms_value = max(dms_value),
+  )
+
+```
+
+```{r missing_dms_values, include=T, echo=F}
+# count how many positons are missing values
+wide_dms_by_mutation = dms_by_mutation %>% 
+  select(!count) %>% 
+  filter(alt_aa != ref_aa) %>% 
+  pivot_wider(
+    names_from=c(dms_name),
+    values_from=dms_value,
+    names_prefix='dms_'
+  ) %>% 
+  # shim is na for all, which lets us get the totals easily
+  mutate(dms_shim_const_NA=NA)
+
+calc_fracs_present = function(df){
+  return(
+    df %>%  
+    mutate(across(starts_with('dms_'), ~ 1 - (.x/dms_shim_const_NA), .names='frac_present_{.col}')) %>%
+    select(!(starts_with('dms_') | contains('NA'))) %>% 
+    pivot_longer(names_to='dms_name', values_to='frac_present', cols=starts_with('frac_')) %>% 
+    mutate(dms_name = str_remove(dms_name, 'frac_present_dms_')) %>% 
+    pivot_wider(names_from = c(host), values_from=frac_present, names_prefix = 'frac_present_')
+  )
+}
+
+dms_values_present_by_mutation = wide_dms_by_mutation %>% 
+  group_by(host) %>% 
+  summarize(across(starts_with('dms_'), ~ sum(is.na(.x)))) %>% 
+  calc_fracs_present()
+print(dms_values_present_by_mutation)
+
+dms_values_present_by_site = wide_dms_by_mutation %>% 
+  group_by(host, pos_aa) %>% 
+  summarize(across(starts_with('dms_'), ~ mean(.x, na.rm=T))) %>% 
+  group_by(host) %>% 
+  summarize(across(starts_with('dms_'), ~ sum(is.nan(.x)))) %>% 
+  calc_fracs_present()
+print(dms_values_present_by_site)
+```
+
+```{r calc_dn_ds, include=F}
+dn_ds_ha = mutations %>% 
+  mutate(synonymous = (alt_aa == ref_aa)) %>% 
+  group_by(pos_aa, host, synonymous) %>% 
+  summarize(n = sum(count)) %>% 
+  pivot_wider(names_from=synonymous, values_from=n, values_fill=0) %>% 
+  rename(count_n = 'FALSE', count_s = 'TRUE') %>% 
+  mutate(
+    ratio = case_when(
+      count_s == 0 ~ count_n,
+      .default = count_n / count_s
+    ),
+    zero_synonymous = (count_s == 0)
+  )
+
+dn_ds_dms_ha = left_join(dms_by_position, dn_ds_ha, by=c('pos_aa', 'host'))
+```
+
+
+```{r plot_by_pos, include=T, echo=F}
+ggplot(dn_ds_ha, aes(x=pos_aa, y=ratio)) +
+  geom_point(aes(color=zero_synonymous)) +
+  facet_wrap(~host, ncol=1) +
+  geom_text_repel(aes(label=ifelse(ratio>2.5,pos_aa,''))) +
+  ggtitle('Selection in HA, B3.13') +
+  xlab('amino acid position') +
+  ylab('dn/ds')
+```
+
+
+```{r plot_dms_comparison, include=T, echo=F, warning=F, fig.height=11, fig.width=11}
+ggplot(dn_ds_dms_ha, aes(x=wt_mean_dms_value, y=ratio)) +
+  geom_point(aes(color=zero_synonymous)) +
+  ggtitle('HA, B3.13') +
+  ylab('dn/ds') +
+  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
+  geom_text_repel(aes(label=pos_aa), max.overlaps=5, size=4)
+```
+
+Error bars show the range of DMS values associated with each point.
+```{r plot_dms_comparison_error_bars, include=T, echo=F, warning=F, fig.height=11, fig.width=11}
+ggplot(dn_ds_dms_ha, aes(x=wt_mean_dms_value, y=ratio, color=pos_aa)) +
+  geom_point() +
+  scale_color_continuous(type='viridis') + 
+  geom_errorbarh(aes(xmin=min_dms_value, xmax=max_dms_value), height=0.5) +
+  ggtitle('HA, B3.13') +
+  ylab('dn/ds') +
+  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
+  geom_text_repel(aes(label=pos_aa), color='black', max.overlaps=5, size=4)
+```
