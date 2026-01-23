@@ -32,12 +32,15 @@ mutations = full_join(
   read.csv('out_bovine_b3.13_pb2/codon_mutation_counts.tsv', sep='\t') %>% 
     mutate(host='bovine', gene='PB2')
 )
+mutations = full_join(
+  mutations,
+  read.csv('out_avian_b3.13_pb2/codon_mutation_counts.tsv', sep='\t') %>% 
+    mutate(host='avian', gene='PB2')
+)
 
 mutations = mutations %>% 
   group_by(pos_aa, ref_aa, alt_aa, host, gene) %>% 
   summarize(count = sum(count))
-
-mutations_ha = mutations %>% filter(gene == 'HA')
 
 ha_site_numbering = read.csv('data/site_numbering_map_HA.csv')
 ```
@@ -78,6 +81,9 @@ sum(count * dms_value) / sum(count)
 = -0.593933
 ```
 #### Read DMS data
+
+todo: numbering for PB2 data
+
 ```{r read_dms, include=F}
 dms_ha = read.csv('data/dms_data_ha.tsv', sep='\t') %>% 
   rename(
@@ -204,6 +210,17 @@ dn_ds_dms = left_join(
 
 dn_ds_dms_ha = dn_ds_dms %>% filter(gene == 'HA')
 dn_ds_dms_pb2 = dn_ds_dms %>% filter(gene == 'PB2')
+
+dn_ds_dms_by_mutation = left_join(
+  dms_by_mutation,
+  dn_ds,
+  by=c('pos_aa', 'host', 'gene'),
+  relationship='many-to-many'
+) %>% 
+  filter(! is.na(dms_name))
+
+dn_ds_dms_by_mutation_ha = dn_ds_dms_by_mutation %>% filter(gene == 'HA')
+dn_ds_dms_by_mutation_pb2 = dn_ds_dms_by_mutation %>% filter(gene == 'PB2')
 ```
 
 ## Plots
@@ -214,9 +231,9 @@ dn_ds_dms_pb2 = dn_ds_dms %>% filter(gene == 'PB2')
 ggplot(dn_ds, aes(x=pos_aa, y=ratio)) +
   geom_hline(yintercept=1, linetype='dashed') +
   geom_point(aes(color=zero_synonymous)) +
-  facet_wrap(vars(host, gene), ncol=1, labeller = label_wrap_gen(multi_line=FALSE)) +
+  facet_wrap(vars(gene, host), ncol=1, labeller = label_wrap_gen(multi_line=FALSE)) +
   geom_text_repel(aes(label=ifelse(ratio>2.5,pos_aa,''))) +
-  ggtitle('Selection in HA, B3.13') +
+  ggtitle('Selection, B3.13') +
   xlab('amino acid position') +
   ylab('dN/dS')
 ```
@@ -263,8 +280,29 @@ ggplot(dn_ds_dms_ha, aes(x=wt_mean_dms_value, y=ratio, color=pos_aa)) +
   geom_text_repel(aes(label=pos_aa), color='black', max.overlaps=5, size=4)
 ```
 
+Plot with one point per observed mutation:
+```{r plot_dms_comparison_ha_by_mutation, include=T, echo=F, warning=F, fig.height=11, fig.width=11}
+ggplot(dn_ds_dms_by_mutation_ha, aes(x=dms_value, y=ratio)) +
+  geom_point(aes(color=zero_synonymous)) +
+  ggtitle('HA, B3.13') +
+  ylab('dN/dS') +
+  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
+  geom_text_repel(aes(label=pos_aa), max.overlaps=5, size=4)
+ 
+```
+
+```{r plot_dms_comparison_ha_by_mutation_count, include=T, echo=F, warning=F, fig.height=11, fig.width=11}
+ggplot(dn_ds_dms_by_mutation_ha, aes(x=dms_value, y=ratio)) +
+  geom_point(aes(color=count)) +
+  scale_color_continuous(type='viridis') +
+  ggtitle('HA, B3.13') +
+  ylab('dN/dS') +
+  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
+  geom_text_repel(aes(label=pos_aa), max.overlaps=5, size=4)
+```
+
 #### PB2
-```{r plot_dms_comparison_pb2, include=T, echo=F, warning=F, fig.height=11, fig.width=11}
+```{r plot_dms_comparison_pb2, include=T, echo=F, warning=F, fig.height=5, fig.width=11}
 ggplot(dn_ds_dms_pb2, aes(x=wt_mean_dms_value, y=ratio)) +
   geom_point(aes(color=zero_synonymous)) +
   ggtitle('PB2, B3.13') +
@@ -273,13 +311,33 @@ ggplot(dn_ds_dms_pb2, aes(x=wt_mean_dms_value, y=ratio)) +
   geom_text_repel(aes(label=pos_aa), max.overlaps=5, size=4)
 ```
 
-```{r plot_dms_comparison_pb2_error_bars, include=T, echo=F, warning=F, fig.height=11, fig.width=11}
+```{r plot_dms_comparison_pb2_error_bars, include=T, echo=F, warning=F, fig.height=5, fig.width=11}
 ggplot(dn_ds_dms_pb2, aes(x=wt_mean_dms_value, y=ratio, color=pos_aa)) +
   geom_point() +
   scale_color_continuous(type='viridis') + 
-  geom_errorbarh(aes(xmin=min_dms_value, xmax=max_dms_value), height=0.06) +
+  geom_errorbarh(aes(xmin=min_dms_value, xmax=max_dms_value), height=0.15) +
   ggtitle('PB2, B3.13') +
   ylab('dN/dS') +
   facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
   geom_text_repel(aes(label=pos_aa), color='black', max.overlaps=5, size=4)
+```
+
+By mutation:
+```{r plot_dms_comparison_pb2_by_mutation, include=T, echo=F, warning=F, fig.height=5, fig.width=11}
+ggplot(dn_ds_dms_by_mutation_pb2, aes(x=dms_value, y=ratio)) +
+  geom_point(aes(color=zero_synonymous)) +
+  ggtitle('PB2, B3.13') +
+  ylab('dN/dS') +
+  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
+  geom_text_repel(aes(label=pos_aa), max.overlaps=5, size=4)
+```
+
+```{r plot_dms_comparison_pb2_by_mutation_count, include=T, echo=F, warning=F, fig.height=5, fig.width=11}
+ggplot(dn_ds_dms_by_mutation_pb2, aes(x=dms_value, y=ratio)) +
+  geom_point(aes(color=count)) +
+  scale_color_continuous(type='viridis') +
+  ggtitle('PB2, B3.13') +
+  ylab('dN/dS') +
+  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
+  geom_text_repel(aes(label=pos_aa), max.overlaps=5, size=4)
 ```
