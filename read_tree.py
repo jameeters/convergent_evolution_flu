@@ -28,7 +28,6 @@ aa_seqs_filename = f'{args.translation_out_dir}/amino_acids.fasta'
 
 # Outputs
 codon_mutation_counts_output_tsv = f'{args.out_dir}/codon_mutation_counts.tsv'
-dn_ds_output_tsv = f'{args.out_dir}/dn_ds_by_site.tsv'
 
 class CodonMut(NamedTuple):
     ref_nt: str
@@ -178,36 +177,6 @@ codon_muts_counts_df = pd.DataFrame(data=temp)
 
 with open(codon_mutation_counts_output_tsv, 'w+') as f:
     codon_muts_counts_df.to_csv(f, sep='\t', index=False)
-
-# ------------------------------------------------
-# count syn and non-syn mutations per site
-# ------------------------------------------------
-mutation_counts = dict()
-for mut_set in new_codon_muts_by_name.values():
-    for mut in mut_set:
-        
-        # Lists are not hashable, so this will force an error if values remain unset. 
-        incr_count_name = ['unset']
-        other_count_name = ['unset']
-        if mut.is_synonymous():
-            incr_count_name = 'count_s'
-            other_count_name = 'count_n'
-        else:
-            incr_count_name = 'count_n'
-            other_count_name = 'count_s'
-
-        try:
-            mutation_counts[mut.pos_aa][incr_count_name] += 1
-        except KeyError:
-            mutation_counts[mut.pos_aa] = {'pos_aa': mut.pos_aa, incr_count_name: 1, other_count_name: 0}
-
-mutation_counts_df = pd.DataFrame(data=mutation_counts.values())
-
-# copy Praneeth's formula to avoid division by 0
-mutation_counts_df['ratio'] = mutation_counts_df['count_n'] / (mutation_counts_df['count_s'] + 1)
-
-with open(dn_ds_output_tsv, 'w+') as f:
-    mutation_counts_df.to_csv(f, sep='\t', index=False)
 
 # ------------------------------------------------
 # Emergence of aa mutations in leaves wrt root. 
