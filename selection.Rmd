@@ -3,7 +3,7 @@ title: "flu_selection"
 output: html_document
 date: "2026-01-22"
 ---
-
+## Setup
 ```{r setup, include=FALSE}
 library(dplyr)
 library(tidyr)
@@ -14,22 +14,37 @@ library(stringr)
 theme_set(theme_bw())
 setwd('/Users/james/Documents/convergent')
 ```
+
 ```{r read_files, include=F}
+# HA data
 mutations = read.csv('out/codon_mutation_counts_bovine_ha.tsv', sep='\t') %>% 
   mutate(host='bovine')
-
 mutations = full_join(
   mutations,
   read.csv('out_avian_b3.13/codon_mutation_counts_ha.tsv', sep='\t') %>% 
     mutate(host='avian')
 )
+mutations = mutations %>% mutate(gene='HA')
+
+# PB2 data
+mutations = full_join(
+  mutations,
+  read.csv('out_bovine_b3.13_pb2/codon_mutation_counts.tsv', sep='\t') %>% 
+    mutate(host='bovine', gene='PB2')
+)
 
 mutations = mutations %>% 
-  group_by(pos_aa, ref_aa, alt_aa, host) %>% 
+  group_by(pos_aa, ref_aa, alt_aa, host, gene) %>% 
   summarize(count = sum(count))
+
+mutations_ha = mutations %>% filter(gene == 'HA')
 
 ha_site_numbering = read.csv('data/site_numbering_map_HA.csv')
 ```
+
+### DMS data
+
+#### Average value calculation
 
 The DMS value calculation is slightly different than before, but it doesn't make much difference.
 As before, we match DMS values with observed mutations by amino acid position, ref, and alt.
@@ -62,7 +77,7 @@ sum(count * dms_value) / sum(count)
 = (2 * 0.2676 + 1 * -2.317) / 3 
 = -0.593933
 ```
-
+#### Read DMS data
 ```{r read_dms, include=F}
 dms_ha = read.csv('data/dms_data_ha.tsv', sep='\t') %>% 
   rename(
@@ -70,9 +85,28 @@ dms_ha = read.csv('data/dms_data_ha.tsv', sep='\t') %>%
     dms_name = name,
     dms_value = value,
   ) %>% 
+  mutate(gene='HA') %>% 
   select(!c('ref_codon', 'alt_codon', 'gff_feature')) %>% 
-  filter(!dms_name %in% c('evescape_sigmoid', 'evescape')) %>% 
+  filter(!dms_name %in% c('evescape_sigmoid', 'evescape', 'mature_h5_site')) %>% 
   distinct()
+
+# todo: numbering?
+dms_pb2 = read.csv('data/summary_prefs_effects_diffsel.csv') %>% 
+  select(c('site', 'wildtype', 'mutation', 'mutdiffsel')) %>% 
+  rename(
+    pos_aa = site,
+    ref_aa = wildtype,
+    alt_aa = mutation
+  ) %>% 
+  mutate(gene='PB2') %>% 
+  pivot_longer(cols=mutdiffsel, names_to='dms_name', values_to='dms_value') %>% 
+  filter(!is.na(dms_value))
+
+dms = full_join(
+  dms_ha,
+  dms_pb2
+)
+  
 
 # match dms to mutations by amino acid pos, ref, and alt.
 # so dms values for mutations not seen in our data are not considered, even if 
@@ -80,8 +114,8 @@ dms_ha = read.csv('data/dms_data_ha.tsv', sep='\t') %>%
 dms_by_mutation = 
   left_join(
     mutations, 
-    dms_ha, 
-    by=c('pos_aa', 'ref_aa', 'alt_aa'),
+    dms, 
+    by=c('pos_aa', 'ref_aa', 'alt_aa', 'gene'),
     relationship='many-to-many'
   )
   
@@ -89,7 +123,7 @@ dms_by_mutation =
 # only results in minor changes compared to naive average
 dms_by_position = dms_by_mutation %>% 
   filter(!is.na(dms_name)) %>% 
-  group_by(pos_aa, dms_name, host) %>% 
+  group_by(pos_aa, dms_name, host, gene) %>% 
   summarize(
     wt_mean_dms_value = sum(count * dms_value)/sum(count),
     mean_dms_value = mean(dms_value),
@@ -98,6 +132,8 @@ dms_by_position = dms_by_mutation %>%
   )
 
 ```
+
+#### Missing DMS Values
 
 How many of our mutations do we have DMS data for?
 This is counting by position, ref, and alt. 
@@ -126,27 +162,29 @@ calc_fracs_present = function(df){
 }
 
 dms_values_present_by_mutation = wide_dms_by_mutation %>% 
-  group_by(host) %>% 
+  group_by(host, gene) %>% 
   summarize(across(starts_with('dms_'), ~ sum(is.na(.x))), .groups='keep') %>% 
   calc_fracs_present()
 
 ggplot(dms_values_present_by_mutation, aes(x=dms_name, y=frac_present)) +
-  geom_col(aes(fill=host), position=position_dodge()) +
+  geom_col(aes(fill=interaction(host, gene)), position=position_dodge()) +
   theme(axis.text.x = element_text(angle = -30, vjust = 0.5, hjust=0))
 
 dms_values_present_by_site = wide_dms_by_mutation %>%
-  group_by(host, pos_aa) %>%
+  group_by(host, gene, pos_aa) %>%
   summarize(across(starts_with('dms_'), ~ mean(.x, na.rm=T))) %>%
-  group_by(host) %>%
+  group_by(host, gene) %>%
   summarize(across(starts_with('dms_'), ~ sum(is.nan(.x)))) %>%
   calc_fracs_present()
 
 ```
 
+### Calculate dN / dS
+
 ```{r calc_dn_ds, include=F}
-dn_ds_ha = mutations %>% 
+dn_ds = mutations %>% 
   mutate(synonymous = (alt_aa == ref_aa)) %>% 
-  group_by(pos_aa, host, synonymous) %>% 
+  group_by(pos_aa, host, gene, synonymous) %>% 
   summarize(n = sum(count)) %>% 
   pivot_wider(names_from=synonymous, values_from=n, values_fill=0) %>% 
   rename(count_n = 'FALSE', count_s = 'TRUE') %>% 
@@ -158,21 +196,33 @@ dn_ds_ha = mutations %>%
     zero_synonymous = (count_s == 0)
   )
 
-dn_ds_dms_ha = left_join(dms_by_position, dn_ds_ha, by=c('pos_aa', 'host'))
+dn_ds_dms = left_join(
+  dms_by_position, 
+  dn_ds, 
+  by=c('pos_aa', 'host', 'gene')
+)
+
+dn_ds_dms_ha = dn_ds_dms %>% filter(gene == 'HA')
+dn_ds_dms_pb2 = dn_ds_dms %>% filter(gene == 'PB2')
 ```
 
+## Plots
 
-```{r plot_by_pos, include=T, echo=F}
-ggplot(dn_ds_ha, aes(x=pos_aa, y=ratio)) +
+### dN / dS by position
+
+```{r plot_by_pos, include=T, echo=F, fig.width=12, fig.height=9}
+ggplot(dn_ds, aes(x=pos_aa, y=ratio)) +
+  geom_hline(yintercept=1, linetype='dashed') +
   geom_point(aes(color=zero_synonymous)) +
-  facet_wrap(~host, ncol=1) +
+  facet_wrap(vars(host, gene), ncol=1, labeller = label_wrap_gen(multi_line=FALSE)) +
   geom_text_repel(aes(label=ifelse(ratio>2.5,pos_aa,''))) +
   ggtitle('Selection in HA, B3.13') +
   xlab('amino acid position') +
-  ylab('dn/ds')
+  ylab('dN/dS')
 ```
 
 ```{r praneeths_dn_ds_by_site, include=T, echo=F, warning=F, fig.width=12, fig.height=9}
+dn_ds_ha = dn_ds %>% filter(gene == 'HA')
 ggplot() +
   geom_rect(data=ha_site_numbering, aes(xmin=sequential_site-0.5, xmax=sequential_site+0.5, ymin=-Inf, ymax=Inf, fill=region), alpha=0.7) +
   scale_fill_manual(values=c('#77AADD', '#AAAA00', '#EE8866', '#99DDFF', '#EEDD88', '#FFAABB', '#44BB99', '#BBCC33')) +
@@ -189,12 +239,14 @@ ggplot() +
 ```
 
 
+### DMS comparison
+#### HA
 
 ```{r plot_dms_comparison, include=T, echo=F, warning=F, fig.height=11, fig.width=11}
 ggplot(dn_ds_dms_ha, aes(x=wt_mean_dms_value, y=ratio)) +
   geom_point(aes(color=zero_synonymous)) +
   ggtitle('HA, B3.13') +
-  ylab('dn/ds') +
+  ylab('dN/dS') +
   facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
   geom_text_repel(aes(label=pos_aa), max.overlaps=5, size=4)
 ```
@@ -206,7 +258,28 @@ ggplot(dn_ds_dms_ha, aes(x=wt_mean_dms_value, y=ratio, color=pos_aa)) +
   scale_color_continuous(type='viridis') + 
   geom_errorbarh(aes(xmin=min_dms_value, xmax=max_dms_value), height=0.5) +
   ggtitle('HA, B3.13') +
-  ylab('dn/ds') +
+  ylab('dN/dS') +
+  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
+  geom_text_repel(aes(label=pos_aa), color='black', max.overlaps=5, size=4)
+```
+
+#### PB2
+```{r plot_dms_comparison_pb2, include=T, echo=F, warning=F, fig.height=11, fig.width=11}
+ggplot(dn_ds_dms_pb2, aes(x=wt_mean_dms_value, y=ratio)) +
+  geom_point(aes(color=zero_synonymous)) +
+  ggtitle('PB2, B3.13') +
+  ylab('dN/dS') +
+  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
+  geom_text_repel(aes(label=pos_aa), max.overlaps=5, size=4)
+```
+
+```{r plot_dms_comparison_pb2_error_bars, include=T, echo=F, warning=F, fig.height=11, fig.width=11}
+ggplot(dn_ds_dms_pb2, aes(x=wt_mean_dms_value, y=ratio, color=pos_aa)) +
+  geom_point() +
+  scale_color_continuous(type='viridis') + 
+  geom_errorbarh(aes(xmin=min_dms_value, xmax=max_dms_value), height=0.06) +
+  ggtitle('PB2, B3.13') +
+  ylab('dN/dS') +
   facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
   geom_text_repel(aes(label=pos_aa), color='black', max.overlaps=5, size=4)
 ```
