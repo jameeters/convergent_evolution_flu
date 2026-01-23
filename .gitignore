@@ -5,6 +5,9 @@ out*/
 data/
 *.Rproj
 *.md.html
+*.html
+.RData
+.Rhistory
 
 # nextflow
 nf/work
