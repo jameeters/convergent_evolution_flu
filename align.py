@@ -18,6 +18,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("sras_file")
 parser.add_argument("fastas_dir")
 parser.add_argument("ref_fasta")
+parser.add_argument('region_name')
 
 # outputs
 parser.add_argument('out_dir')
@@ -29,6 +30,7 @@ args = parser.parse_args()
 sras_file = args.sras_file
 fastas_dir = args.fastas_dir
 ref_fasta = args.ref_fasta
+region_name = args.region_name
 
 # outputs
 out_dir = args.out_dir
@@ -46,11 +48,11 @@ with open(sras_file, 'r') as f:
     target_sras = {l.strip() for l in f.readlines()}
 
 # find input fasta files
-all_fastas = glob.glob(f'{fastas_dir}/*HA_cns.fa')
+all_fastas = glob.glob(f'{fastas_dir}/*{region_name}_cns.fa')
 
 fasta_by_sra = dict()
 for fasta in all_fastas:
-    fasta_sra = os.path.basename(fasta).replace('_HA_cns.fa', '')
+    fasta_sra = os.path.basename(fasta).replace(f'_{region_name}_cns.fa', '')
     if fasta_sra in target_sras:
         fasta_by_sra[fasta_sra] = fasta
 

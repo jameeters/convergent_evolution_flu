@@ -27,8 +27,8 @@ nt_seqs_filename = f'{args.translation_out_dir}/coding_seqs.fasta'
 aa_seqs_filename = f'{args.translation_out_dir}/amino_acids.fasta'
 
 # Outputs
-codon_mutation_counts_output_tsv = f'{args.out_dir}/codon_mutation_counts_ha.tsv'
-dn_ds_output_tsv = f'{args.out_dir}/dn_ds_by_site_ha.tsv'
+codon_mutation_counts_output_tsv = f'{args.out_dir}/codon_mutation_counts.tsv'
+dn_ds_output_tsv = f'{args.out_dir}/dn_ds_by_site.tsv'
 
 class CodonMut(NamedTuple):
     ref_nt: str

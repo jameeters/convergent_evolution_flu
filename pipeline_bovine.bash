@@ -5,7 +5,7 @@ OUT_DIR='out'
 SRAS_FILE="data/sras.txt"
 FASTAS_DIR="/Users/james/Documents/avian-influenza/fasta"
 REF_FASTA="data/HA_reference.fasta"
-
+REGION_NAME="HA"
 
 CONCATENATED_FASTA="$OUT_DIR/concat.fasta"
 SRAS_QC_PASSED_FILE="$OUT_DIR/sras_qc_passed.txt"
@@ -17,6 +17,7 @@ python3 align.py \
 "$SRAS_FILE" \
 "$FASTAS_DIR" \
 "$REF_FASTA" \
+"$REGION_NAME" \
 "$OUT_DIR" \
 "$ALIGNED_SAMPLES_ONLY_FASTA"
 
