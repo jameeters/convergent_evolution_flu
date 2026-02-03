@@ -10,6 +10,7 @@ library(tidyr)
 library(ggplot2)
 library(ggrepel)
 library(stringr)
+library(ggpubr)
 
 theme_set(theme_bw())
 setwd('/Users/james/Documents/convergent')
@@ -43,6 +44,7 @@ mutations = mutations %>%
   summarize(count = sum(count))
 
 ha_site_numbering = read.csv('data/site_numbering_map_HA.csv')
+
 ```
 
 ### DMS data
@@ -197,12 +199,12 @@ dn_ds = mutations %>%
   mutate(
     ratio_formula = case_when(
       count_s == 0 ~ 'count_n',
-      count_n == 0 & count_s > 1 ~ '1/count_s',
+      count_n == 0 & count_s >= 1 ~ '1/count_s',
       .default = 'count_n/count_s'
     ),
     ratio = case_when(
       count_s == 0 ~ count_n,
-      count_n == 0 & count_s > 1 ~ 1 / count_s,
+      count_n == 0 & count_s >= 1 ~ 1 / count_s,
       .default = count_n / count_s
     ),
     zero_synonymous = (count_s == 0)
@@ -214,6 +216,16 @@ dn_ds_dms = left_join(
   by=c('pos_aa', 'host', 'gene')
 )
 
+# add region to dn_ds
+dn_ds = dn_ds %>% 
+  left_join(
+    ha_site_numbering %>% 
+      select(sequential_site, region) %>% 
+      rename(pos_aa = sequential_site) %>% 
+      mutate(gene = 'HA'),
+    by=c('pos_aa', 'gene')
+  )
+
 dn_ds_dms_ha = dn_ds_dms %>% filter(gene == 'HA')
 dn_ds_dms_pb2 = dn_ds_dms %>% filter(gene == 'PB2')
 
@@ -224,6 +236,7 @@ dn_ds_dms_by_mutation = left_join(
   relationship='many-to-many'
 ) %>% 
   filter(! is.na(dms_name))
+
 
 dn_ds_dms_by_mutation_ha = dn_ds_dms_by_mutation %>% filter(gene == 'HA')
 dn_ds_dms_by_mutation_pb2 = dn_ds_dms_by_mutation %>% filter(gene == 'PB2')
@@ -260,7 +273,6 @@ ggplot() +
   theme_classic()
 
 ```
-
 
 ### DMS comparison
 #### HA
@@ -349,4 +361,153 @@ ggplot(dn_ds_dms_by_mutation_pb2, aes(x=dms_value, y=log(ratio))) +
   ylab('log(dN/dS)') +
   facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
   geom_text_repel(aes(label=paste0(ref_aa, pos_aa, alt_aa)), max.overlaps=5, size=4)
+```
+
+
+### Sites of interest selection
+
+```{r HA_trailer_regions, include=T, echo=F, warning=F}
+foo = dn_ds_ha %>% filter(region != 'HA1' & host == 'bovine')
+
+hi = foo %>% ungroup %>%  slice_max(ratio, n=5)
+lo = foo %>% ungroup %>%  slice_min(ratio, n=5)
+extreme = hi %>% union_all(lo)
+
+ggplot(foo, aes(x=pos_aa, y=log(ratio))) +
+  scale_color_manual(values=c('#77AADD', '#AAAA00', '#EE8866', '#99DDFF', '#EEDD88', '#FFAABB', '#44BB99', '#BBCC33')[-1]) +
+  geom_hline(yintercept=0, linetype='dashed') +
+  geom_point(aes(color=region)) +
+  facet_wrap(vars(gene, host), ncol=1, labeller = label_wrap_gen(multi_line=FALSE)) +
+  geom_text_repel(aes(label=ifelse(pos_aa %in% extreme$pos_aa, pos_aa, '')), size=3, max.overlaps=2, box.padding = 0) +
+  ggtitle('B3.13, bovine only, HA1 sites dropped') +
+  xlab('amino acid position') +
+  ylab('log(dN/dS)')
+```
+
+```{r, HA_mouse_ferret, include=T, echo=F, warning=F}
+foo = dn_ds_dms_by_mutation_ha %>% 
+  filter(region != 'HA1' & host == 'bovine' & dms_name %in% c('mouse_sera_escape', 'ferret_sera_escape'))
+
+ggplot(foo, aes(x=dms_value, y=log(ratio))) +
+  geom_hline(yintercept = 0, linetype='dashed') +
+  geom_point(aes(color=count)) +
+  scale_color_continuous(type='viridis') +
+  ggtitle('HA, B3.13, Bovine, HA1 sites dropped') +
+  ylab('log(dN/dS)') +
+  facet_wrap(vars(dms_name), scales='free_x', ncol=4) +
+  geom_text_repel(aes(label=paste0(ref_aa, pos_aa, alt_aa)), max.overlaps=5, size=3, box.padding = 0)
+```
+
+
+```{r HA_trailer_regions_grid, include=T, echo=F, warning=F}
+foo = dn_ds_ha %>% 
+  rename(subregion = region) %>% 
+  mutate(
+    region = case_when(
+      str_detect(subregion, 'region-[A-E]') ~ 'HA1',
+      .default=subregion
+    ),
+    selection_type = case_when(
+      ratio == 1 ~ 'neutral',
+      ratio > 1 ~ 'positive',
+      ratio < 1 ~ 'purifying',
+      .default = 'unset'
+    )
+  )
+
+hi = foo %>% ungroup %>% slice_max(ratio, n=5, by=host)
+lo = foo %>% ungroup %>% slice_min(ratio, n=5, by=host)
+extreme = hi %>% union_all(lo) %>% 
+  mutate(label=T) %>% 
+  select(pos_aa, host, label)
+
+foo = foo %>% 
+  left_join(extreme, by=join_by(host, pos_aa)) %>% 
+  mutate(
+    label = case_when(
+      is.na(label) ~ F,
+      .default=label
+    )
+  )
+
+bovine = foo %>% filter(host == 'bovine')
+ylim_bovine = log(c(min(foo$ratio), max(foo$ratio)))
+
+p1 = ggplot(foo %>% filter(region == 'HA1'), aes(x=pos_aa, y=log(ratio)))+
+  geom_hline(yintercept=0, linetype='dashed') +
+  geom_point(aes(color=selection_type)) +
+  scale_color_manual(values=c('#a3a3a388', '#66ccee', '#ee6677'))+
+  ylim(ylim_bovine) +
+  xlab('') +
+      ggtitle('B3.13') +
+  ylab('log(dN/dS)') +
+  theme(
+    plot.margin = margin(0, 0, 0, 0)
+  )+
+  facet_wrap(
+    vars(host, region), 
+    ncol=1, 
+    labeller = label_wrap_gen(multi_line=FALSE),
+    scales='fixed',
+  )+
+  geom_text_repel(aes(label=ifelse(label & ratio < 1, pos_aa, '')), size=3, max.overlaps=3, box.padding = 0) +
+    geom_text_repel(aes(label=ifelse(label & ratio > 1 & count_s > 0, pos_aa, '')), size=3, max.overlaps=3, box.padding = 0) +
+    geom_text_repel(aes(label=ifelse(label & ratio > 1 & count_s == 0, pos_aa, '')), size=3, max.overlaps=3, box.padding = 0, color='red')
+  
+
+p2 = ggplot(foo %>% filter(region == 'PBCS'), aes(x=pos_aa, y=log(ratio)))+
+  geom_hline(yintercept=0, linetype='dashed') +
+  geom_point(aes(color=selection_type)) +
+  scale_color_manual(values=c('#a3a3a388', '#66ccee', '#ee6677'))+
+  ylim(ylim_bovine) +
+  xlab('amino acid position') +
+  theme(
+    axis.title.y=element_blank(),
+    axis.line.y=element_blank(),
+    axis.ticks.y=element_blank(),
+    axis.text.y = element_blank(),
+    plot.margin = margin(0, 0, 0, 0)
+  ) +
+  facet_wrap(
+    vars(host, region), 
+    ncol=1, 
+    labeller = label_wrap_gen(multi_line=FALSE),
+    scales='fixed',
+  )+
+  geom_text_repel(aes(label=ifelse(label & ratio < 1, pos_aa, '')), size=3, max.overlaps=3, box.padding = 0) +
+    geom_text_repel(aes(label=ifelse(label & ratio > 1 & count_s > 0, pos_aa, '')), size=3, max.overlaps=3, box.padding = 0) +
+    geom_text_repel(aes(label=ifelse(label & ratio > 1 & count_s == 0, pos_aa, '')), size=3, max.overlaps=3, box.padding = 0, color='red')
+
+p3 = ggplot(foo %>% filter(region == 'HA2'), aes(x=pos_aa, y=log(ratio)))+
+  geom_hline(yintercept=0, linetype='dashed') +
+  geom_point(aes(color=selection_type)) +
+  scale_color_manual(values=c('#a3a3a388', '#66ccee', '#ee6677'))+
+  ylim(ylim_bovine) +
+  xlab('') +
+  theme(
+    axis.title.y=element_blank(),
+    axis.line.y=element_blank(),
+    axis.ticks.y=element_blank(),
+    axis.text.y = element_blank(),
+    plot.margin = margin(0, 0, 0, 0)
+  )+
+  facet_wrap(
+    vars(host, region), 
+    ncol=1, 
+    labeller = label_wrap_gen(multi_line=FALSE),
+    scales='fixed',
+  )+
+  geom_text_repel(aes(label=ifelse(label & ratio < 1, pos_aa, '')), size=3, max.overlaps=3, box.padding = 0) +
+    geom_text_repel(aes(label=ifelse(label & ratio > 1 & count_s > 0, pos_aa, '')), size=3, max.overlaps=3, box.padding = 0) +
+    geom_text_repel(aes(label=ifelse(label & ratio > 1 & count_s == 0, pos_aa, '')), size=3, max.overlaps=3, box.padding = 0, color='red')
+
+ggarrange(
+  p1, p2, p3,
+  nrow=1,
+  common.legend=T,
+  legend='bottom',
+  align='h',
+  widths = c(5, 2.1, 3)
+)
+
 ```
