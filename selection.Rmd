@@ -11,6 +11,7 @@ library(ggplot2)
 library(ggrepel)
 library(stringr)
 library(ggpubr)
+library(ggpmisc)
 
 theme_set(theme_bw())
 setwd('/Users/james/Documents/convergent')
@@ -127,17 +128,6 @@ dms_by_mutation =
     relationship='many-to-many'
   )
   
-# Weighted average of DMS values 
-# only results in minor changes compared to naive average
-dms_by_position = dms_by_mutation %>% 
-  filter(!is.na(dms_name)) %>% 
-  group_by(pos_aa, dms_name, host, gene) %>% 
-  summarize(
-    wt_mean_dms_value = sum(count * dms_value)/sum(count),
-    mean_dms_value = mean(dms_value),
-    min_dms_value = min(dms_value),
-    max_dms_value = max(dms_value),
-  )
 
 ```
 
@@ -162,7 +152,7 @@ calc_fracs_present = function(df){
   return(
     df %>%  
     mutate(across(starts_with('dms_'), ~ 1 - (.x/dms_shim_const_NA), .names='frac_present_{.col}')) %>%
-    select(!(starts_with('dms_') | contains('NA'))) %>% 
+    select(!(starts_with('dms_') | contains('NA', ignore.case=F))) %>% 
     pivot_longer(names_to='dms_name', values_to='frac_present', cols=starts_with('frac_')) %>% 
     mutate(dms_name = str_remove(dms_name, 'frac_present_dms_')) 
     # pivot_wider(names_from = c(host), values_from=frac_present, names_prefix = 'frac_present_')
@@ -210,12 +200,6 @@ dn_ds = mutations %>%
     zero_synonymous = (count_s == 0)
   )
 
-dn_ds_dms = left_join(
-  dms_by_position, 
-  dn_ds, 
-  by=c('pos_aa', 'host', 'gene')
-)
-
 # add region to dn_ds
 dn_ds = dn_ds %>% 
   left_join(
@@ -225,9 +209,6 @@ dn_ds = dn_ds %>%
       mutate(gene = 'HA'),
     by=c('pos_aa', 'gene')
   )
-
-dn_ds_dms_ha = dn_ds_dms %>% filter(gene == 'HA')
-dn_ds_dms_pb2 = dn_ds_dms %>% filter(gene == 'PB2')
 
 dn_ds_dms_by_mutation = left_join(
   dms_by_mutation,
@@ -277,39 +258,9 @@ ggplot() +
 ### DMS comparison
 #### HA
 
-```{r plot_dms_comparison, include=T, echo=F, warning=F, fig.height=11, fig.width=11}
-ggplot(dn_ds_dms_ha, aes(x=wt_mean_dms_value, y=ratio)) +
-  geom_point(aes(color=zero_synonymous)) +
-  ggtitle('HA, B3.13') +
-  ylab('dN/dS') +
-  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
-  geom_text_repel(aes(label=pos_aa), max.overlaps=5, size=4)
-```
-
-Error bars show the range of DMS values associated with each point.
-```{r plot_dms_comparison_error_bars, include=T, echo=F, warning=F, fig.height=11, fig.width=11}
-ggplot(dn_ds_dms_ha, aes(x=wt_mean_dms_value, y=ratio, color=pos_aa)) +
-  geom_point() +
-  scale_color_continuous(type='viridis') + 
-  geom_errorbarh(aes(xmin=min_dms_value, xmax=max_dms_value), height=0.5) +
-  ggtitle('HA, B3.13') +
-  ylab('dN/dS') +
-  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
-  geom_text_repel(aes(label=pos_aa), color='black', max.overlaps=5, size=4)
-```
-
 Plot with one point per observed mutation:
-```{r plot_dms_comparison_ha_by_mutation, include=T, echo=F, warning=F, fig.height=11, fig.width=11}
-ggplot(dn_ds_dms_by_mutation_ha, aes(x=dms_value, y=ratio)) +
-  geom_point(aes(color=zero_synonymous)) +
-  ggtitle('HA, B3.13') +
-  ylab('dN/dS') +
-  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
-  geom_text_repel(aes(label=pos_aa), max.overlaps=5, size=4)
- 
-```
 
-```{r plot_dms_comparison_ha_by_mutation_count, include=T, echo=F, warning=F, fig.height=11, fig.width=11}
+```{r plot_dms_comparison_ha, include=T, echo=F, warning=F, fig.height=11, fig.width=11}
 ggplot(dn_ds_dms_by_mutation_ha, aes(x=dms_value, y=log(ratio))) +
   geom_hline(yintercept = 0, linetype='dashed') +
   geom_point(aes(color=count)) +
@@ -317,42 +268,14 @@ ggplot(dn_ds_dms_by_mutation_ha, aes(x=dms_value, y=log(ratio))) +
   ggtitle('HA, B3.13') +
   ylab('log(dN/dS)') +
   facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
-  geom_text_repel(aes(label=paste0(ref_aa, pos_aa, alt_aa)), max.overlaps=8, size=3)
+  geom_text_repel(aes(label=paste0(ref_aa, pos_aa, alt_aa)), max.overlaps=2, size=3, box.padding=0)
   
 ```
 
 #### PB2
-```{r plot_dms_comparison_pb2, include=T, echo=F, warning=F, fig.height=5, fig.width=11}
-ggplot(dn_ds_dms_pb2, aes(x=wt_mean_dms_value, y=ratio)) +
-  geom_point(aes(color=zero_synonymous)) +
-  ggtitle('PB2, B3.13') +
-  ylab('dN/dS') +
-  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
-  geom_text_repel(aes(label=pos_aa), max.overlaps=5, size=4)
-```
-
-```{r plot_dms_comparison_pb2_error_bars, include=T, echo=F, warning=F, fig.height=5, fig.width=11}
-ggplot(dn_ds_dms_pb2, aes(x=wt_mean_dms_value, y=ratio, color=pos_aa)) +
-  geom_point() +
-  scale_color_continuous(type='viridis') + 
-  geom_errorbarh(aes(xmin=min_dms_value, xmax=max_dms_value), height=0.15) +
-  ggtitle('PB2, B3.13') +
-  ylab('dN/dS') +
-  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
-  geom_text_repel(aes(label=pos_aa), color='black', max.overlaps=5, size=4)
-```
-
 By mutation:
-```{r plot_dms_comparison_pb2_by_mutation, include=T, echo=F, warning=F, fig.height=5, fig.width=11}
-ggplot(dn_ds_dms_by_mutation_pb2, aes(x=dms_value, y=ratio)) +
-  geom_point(aes(color=zero_synonymous)) +
-  ggtitle('PB2, B3.13') +
-  ylab('dN/dS') +
-  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
-  geom_text_repel(aes(label=pos_aa), max.overlaps=5, size=4)
-```
 
-```{r plot_dms_comparison_pb2_by_mutation_count, include=T, echo=F, warning=F, fig.height=5, fig.width=11}
+```{r plot_dms_comparison_pb2, include=T, echo=F, warning=F, fig.height=5, fig.width=11}
 ggplot(dn_ds_dms_by_mutation_pb2, aes(x=dms_value, y=log(ratio))) +
   geom_hline(yintercept = 0, linetype='dashed') +
   geom_point(aes(color=count)) +
@@ -511,3 +434,205 @@ ggarrange(
 )
 
 ```
+
+## Counts
+
+```{r count_by_position, include=T, echo=F, warning=F, fig.width=12, fig.height=9}
+muts = mutations %>% 
+  mutate(
+    type = case_when(
+      ref_aa == alt_aa ~ 'synonymous',
+      .default = 'non-synonymous'
+    )
+  )
+
+ggplot(muts, aes(x=pos_aa, y=count)) +
+  geom_point(aes(color=type)) +
+  facet_wrap(vars(gene, type, host), ncol=2, labeller = label_wrap_gen(multi_line=FALSE)) +
+  geom_text_repel(aes(label=paste0(ref_aa, pos_aa, alt_aa)), size=3, max.overlaps=3, box.padding = 0) +
+  ggtitle('B3.13') +
+  xlab('amino acid position') +
+  ylab('Count of emergences')
+```
+
+```{r plot_count_vs_dms_ha, include=T, echo=F, warning=F, fig.height=10, fig.width=11}
+ggplot(dn_ds_dms_by_mutation_ha, aes(x=dms_value, y=count)) +
+  geom_point() +
+  ggtitle('HA, B3.13') +
+  ylab('emergence count') +
+  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4, labeller = label_wrap_gen(multi_line=FALSE)) +
+  geom_text_repel(aes(label=paste0(ref_aa, pos_aa, alt_aa)), max.overlaps=3, size=3, box.padding = 0)
+```
+
+```{r plot_count_vs_dms_pb2, include=T, echo=F, warning=F, fig.height=5, fig.width=11}
+ggplot(dn_ds_dms_by_mutation_pb2, aes(x=dms_value, y=count)) +
+  geom_point() +
+  ggtitle('PB2, B3.13') +
+  ylab('emergence count') +
+  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4) +
+  geom_text_repel(aes(label=paste0(ref_aa, pos_aa, alt_aa)), max.overlaps=5, size=4, box.padding = 0)
+```
+
+The relationship between count and dN/dS is weak at best.
+```{r plot_count_vs_dn_ds, include=T, echo=F, warning=F, fig.height=5, fig.width=5}
+ggplot(dn_ds_dms_by_mutation, aes(x=count, y=ratio)) +
+  geom_point(alpha=0.1, position = position_jitter(width = 0.2)) +
+  stat_poly_line(method = 'lm', se=F)+
+  stat_poly_eq() +
+  ggtitle('B3.13, non-syn mutations with dms data only') +
+  ylab('dN/dS') +
+  facet_wrap(vars(host, gene), scales='fixed', ncol=2) 
+  # geom_text_repel(aes(label=paste0(ref_aa, pos_aa, alt_aa)), max.overlaps=3, size=4, box.padding = 0)
+```
+
+## Flumut
+
+```{r read_flumut, include=F, echo=F}
+flumut = read.csv('data/flumut_annotations.tsv', sep='\t')
+flumut = flumut %>% 
+  rename(
+    flumut_effect_name = effect_name
+  ) %>% 
+  separate_wider_regex(
+    mutation_name, 
+    patterns=c(
+      'gene' = '^.*:',
+      'ref_aa' = '\\w',
+      'pos_aa' = '\\d+',
+      'alt_aa' = '\\w'
+      ), 
+    ) %>% 
+  mutate(
+    gene = str_remove(gene, ':'),
+    gene = str_remove(gene, '\\d-5'),
+    pos_aa = as.numeric(pos_aa) 
+  ) %>% 
+  filter(gene %in% c('HA', 'PB2')) %>% 
+  select(!c(title, authors, year)) %>% 
+  unique() %>% 
+  # Convert from mature H5 to sequential numbering
+  mutate(mature_H5_site = pos_aa) %>% 
+  left_join(
+    ha_site_numbering %>% select(sequential_site, mature_H5_site) %>% mutate(gene = 'HA'),
+    by = join_by(gene, mature_H5_site)
+  ) %>% 
+  mutate(
+    pos_aa = case_when(
+      gene == 'HA' ~ sequential_site,
+      .default = pos_aa
+    )
+  ) %>% 
+  select(!c(mature_H5_site, sequential_site))
+  
+flumut_dn_ds_dms = dn_ds_dms_by_mutation %>% 
+  left_join(flumut, by=join_by(gene, pos_aa, alt_aa, ref_aa), relationship = 'many-to-many')
+
+flumut_dn_ds = dn_ds %>% 
+  left_join(mutations, by=join_by(host, gene, pos_aa), relationship = 'one-to-many') %>% 
+  left_join(
+    flumut,
+    by = join_by(gene, pos_aa, alt_aa, ref_aa),
+    relationship = 'many-to-many'
+  )
+```
+The matching between mutations in this dataset and those annotated in flumut is poor.
+The lack of significant overlap makes these comparisons mostly useless.
+```{r flumut_matching, include=T, echo=F}
+flumut_dn_ds %>% 
+  mutate(has_flumut = is.na(flumut_effect_name)) %>% 
+  mutate(flumut_shim_NA = NA) %>% 
+  group_by(gene, host) %>% 
+  summarize(across(starts_with('flumut_'), ~ sum(is.na(.x))), .groups='keep') %>% 
+  mutate(
+    total_muts = flumut_shim_NA,
+    count_flumut_present = total_muts - flumut_effect_name
+  ) %>% 
+  mutate(across(starts_with('flumut_'), ~ 1 - (.x/flumut_shim_NA), .names='frac_present_{.col}')) %>% 
+  select(!(starts_with('flumut_') | contains('NA', ignore.case=F))) %>% 
+  rename(frac_muts_with_flumut = frac_present_flumut_effect_name) %>% 
+  print()
+```
+
+```{r plot_flumut_dn_ds, include=T, echo=F, fig.width=10}
+ggplot(flumut_dn_ds_dms, aes(x=flumut_effect_name, y=ratio)) +
+  geom_hline(yintercept = 1, linetype='dashed')+
+  geom_point(aes(color=flumut_effect_name), position = position_jitter(width=0.3), alpha=0.5, show.legend = F) +
+  geom_boxplot(outliers=F, alpha=0) +
+  coord_flip() +
+  ylab('dN/dS') +
+  facet_wrap(vars(host, gene), labeller = label_wrap_gen(multi_line=FALSE))
+
+flumut_dn_ds %>% arrange(desc(is.na(flumut_effect_name))) %>% 
+  ggplot(aes(x=pos_aa, y=log(ratio))) +
+  geom_hline(yintercept=0, linetype='dashed') +
+  geom_point(aes(color=flumut_effect_name), alpha=0.4) +
+  facet_wrap(vars(gene, host), ncol=1, labeller = label_wrap_gen(multi_line=FALSE)) +
+  # geom_text_repel(aes(label=ifelse(ratio>2.5,pos_aa,''))) +
+  ggtitle('Selection, B3.13') +
+  xlab('amino acid position') +
+  ylab('log(dN/dS)')
+```
+
+```{r plot_flumut_dms_HA, include=T, echo=F, fig.width=12, fig.height=6}
+flumut_dn_ds_dms %>% filter(gene == 'HA' & host == 'bovine') %>% 
+ggplot(aes(x=flumut_effect_name, y=dms_value)) +
+  geom_point(aes(color=flumut_effect_name), position = position_jitter(width=0.3), alpha=0.5, show.legend = F) +
+  geom_boxplot(outliers=F, alpha=0) +
+  coord_flip() +
+  facet_wrap(vars(host, dms_name), labeller = label_wrap_gen(multi_line=FALSE), scales='free_x') 
+
+flumut_dn_ds_dms %>% 
+  filter(gene == 'HA' & host == 'bovine') %>% 
+  arrange(desc(is.na(flumut_effect_name))) %>% 
+ggplot(aes(x=dms_value, y=log(ratio))) +
+  geom_hline(yintercept = 0, linetype='dashed') +
+  geom_point(aes(color=flumut_effect_name), alpha=0.4) +
+  ggtitle('HA, B3.13') +
+  ylab('log(dN/dS)') +
+  facet_wrap(vars(dms_name, host), scales='free_x', ncol=4, labeller = label_wrap_gen(multi_line=FALSE)) +
+  geom_text_repel(
+    aes(
+      label=ifelse(
+        !is.na(flumut_effect_name), 
+        paste0(ref_aa, pos_aa, alt_aa), 
+        ''
+      ), 
+      color=flumut_effect_name
+    ), 
+    size=3, 
+    max.overlaps = Inf
+  )
+```
+
+```{r plot_flumut_dms_pb2, include=T, echo=F, fig.width = 12, fig.height=6}
+flumut_dn_ds_dms %>% filter(gene == 'PB2') %>% 
+ggplot(aes(x=flumut_effect_name, y=dms_value)) +
+  geom_point(aes(color=flumut_effect_name), position = position_jitter(width=0.3), alpha=0.5, show.legend = F) +
+  geom_boxplot(outliers=F, alpha=0) +
+  coord_flip() +
+  facet_wrap(vars(host, dms_name), labeller = label_wrap_gen(multi_line=FALSE))
+
+flumut_dn_ds_dms %>% 
+  filter(gene == 'PB2') %>% 
+  arrange(desc(is.na(flumut_effect_name))) %>% 
+ggplot(aes(x=dms_value, y=log(ratio))) +
+  geom_hline(yintercept = 0, linetype='dashed') +
+  geom_point(aes(color=flumut_effect_name), alpha=0.4) +
+  ggtitle('PB2, B3.13') +
+  ylab('log(dN/dS)') +
+  facet_wrap(vars(dms_name, host), scales='free_x', labeller = label_wrap_gen(multi_line=FALSE)) +
+  geom_text_repel(
+    data = flumut_dn_ds_dms %>% filter(gene == 'PB2' & !is.na(flumut_effect_name)) %>% select(host, pos_aa, ref_aa, alt_aa, dms_value, ratio) %>% unique(),
+    aes(
+      label = paste0(ref_aa, pos_aa, alt_aa), 
+    ), 
+    size=3, 
+    max.overlaps = 8,
+    box.padding = 1,
+    nudge_y = 0.1
+  )
+```
+
+
+
+
