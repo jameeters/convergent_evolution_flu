@@ -13,33 +13,33 @@ SRAS_QC_PASSED_FILE="$OUT_DIR/sras_qc_passed.txt"
 ALIGNED_WITH_REF_FASTA="$OUT_DIR/ref_aligned.fasta"
 ALIGNED_SAMPLES_ONLY_FASTA="$OUT_DIR/ref_aligned_samples_only.fasta"
 
-# python3 align.py \
-# "$SRAS_FILE" \
-# "$FASTAS_DIR" \
-# "$REF_FASTA" \
-# "$REGION_NAME" \
-# "$OUT_DIR" \
-# "$ALIGNED_SAMPLES_ONLY_FASTA"
+python3 align.py \
+"$SRAS_FILE" \
+"$FASTAS_DIR" \
+"$REF_FASTA" \
+"$REGION_NAME" \
+"$OUT_DIR" \
+"$ALIGNED_SAMPLES_ONLY_FASTA"
 
 SAMPLE_METADATA_FILE="$OUT_DIR/sample_metadata.tsv"
 
-# python3 get_sample_metadata.py \
-# "$SRAS_FILE" \
-# "$SAMPLE_METADATA_FILE"
+python3 get_sample_metadata.py \
+"$SRAS_FILE" \
+"$SAMPLE_METADATA_FILE"
 
 GENOMIC_TREE_OUTPUT_PREFIX="$OUT_DIR/genomic_tree"
 
-# ./genomic_tree.bash \
-# "$ALIGNED_SAMPLES_ONLY_FASTA" \
-# "$GENOMIC_TREE_OUTPUT_PREFIX"
+./genomic_tree.bash \
+"$ALIGNED_SAMPLES_ONLY_FASTA" \
+"$GENOMIC_TREE_OUTPUT_PREFIX"
 
 TREETIME_OUT_DIR="$OUT_DIR/treetime"
 
-# ./time_tree.bash \
-# "$GENOMIC_TREE_OUTPUT_PREFIX.treefile" \
-# "$ALIGNED_SAMPLES_ONLY_FASTA" \
-# "$SAMPLE_METADATA_FILE" \
-# "$TREETIME_OUT_DIR"
+./time_tree.bash \
+"$GENOMIC_TREE_OUTPUT_PREFIX.treefile" \
+"$ALIGNED_SAMPLES_ONLY_FASTA" \
+"$SAMPLE_METADATA_FILE" \
+"$TREETIME_OUT_DIR"
 
 HA_GFF_FILE="data/HA.gff3"
 TRANSLATION_OUT_DIR="$OUT_DIR/translation"
