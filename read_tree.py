@@ -9,11 +9,12 @@ from utils.translation import translate_seq_codonwise
 import pandas as pd
 import argparse
 
+
 parser = argparse.ArgumentParser()
 
 # Inputs
-parser.add_argument('ancestral_out_dir')
 parser.add_argument('translation_out_dir')
+parser.add_argument('treetime_out_dir')
 
 
 # Outputs
@@ -22,12 +23,14 @@ parser.add_argument('out_dir')
 args = parser.parse_args()
 
 # Inputs
-tree_file = f'{args.ancestral_out_dir}/annotated_tree.nexus'
+tree_file = f'{args.treetime_out_dir}/timetree.nexus'
 nt_seqs_filename = f'{args.translation_out_dir}/coding_seqs.fasta'
 aa_seqs_filename = f'{args.translation_out_dir}/amino_acids.fasta'
+node_dates_filename = f'{args.treetime_out_dir}/dates.tsv'
 
 # Outputs
 codon_mutation_counts_output_tsv = f'{args.out_dir}/codon_mutation_counts.tsv'
+dated_mutations_tsv = f'{args.out_dir}/dated_mutations.tsv'
 
 class CodonMut(NamedTuple):
     ref_nt: str
@@ -110,6 +113,13 @@ def check_codons_and_amino_acids(node: toytree.Node):
             assert Mut(ref=cm.ref_aa, alt=cm.alt_aa, pos=cm.pos_aa) in node.new_aa_muts
 
 
+def read_dates():
+    with open(node_dates_filename, 'r') as f:
+        dates = pd.read_csv(f, sep='\t')
+    return dates
+
+
+
 with open(tree_file, 'r') as f:
     direct_toytree = toytree.tree(f.read())
 
@@ -175,56 +185,24 @@ for mut_set in new_codon_muts_by_name.values():
 temp = [mut.to_dict(count) for mut, count in codon_muts_counts.items()]
 codon_muts_counts_df = pd.DataFrame(data=temp)
 
+
 with open(codon_mutation_counts_output_tsv, 'w+') as f:
     codon_muts_counts_df.to_csv(f, sep='\t', index=False)
 
-# ------------------------------------------------
-# Emergence of aa mutations in leaves wrt root. 
-# output from this is not currently used
-# ------------------------------------------------
-leaf_aa_muts_from_root_by_name = dict()
-for leaf in direct_toytree.treenode.get_leaves():
-    leaf_aa_muts_from_root_by_name[leaf.name] = compare_aa_seqs(base=direct_toytree.treenode, sample=leaf)
-direct_toytree = direct_toytree.set_node_data(feature='aa_muts_wrt_root', data=leaf_aa_muts_from_root_by_name, default=None)
+# dated mutation data
+dates = read_dates()
+dates = dates.rename(columns={'#node': 'node'})
 
-# mut -> leaf name -> name of node where mut emerged
-# {Mut: {str: str}}
-leaf_aa_muts_from_root_emergence = dict()
+temp = {node: [mut.to_dict() for mut in mutset] for node, mutset in new_codon_muts_by_name.items()}
+for node, mutlist in temp.items():
+    for mut in mutlist:
+        mut['node'] = node
 
-for leaf in direct_toytree.treenode.get_leaves():
-    for mut in leaf.aa_muts_wrt_root:
-        putative = leaf
-        while mut not in putative.new_aa_muts:
+temp2 = []
+for mutlist in temp.values():
+    temp2 += mutlist
 
-            # hacky fix to account for multiple mutations at the same site.
-            # EG: at leaf, mut wrt root is K228I and mut wrt parent is R228I. 
-            if len([pm for pm in putative.new_aa_muts if pm.pos == mut.pos and pm.alt == mut.alt]) > 0:
-                break
+dated_muts_df = pd.DataFrame(data=temp2).merge(dates, how='left', on = 'node', validate="m:1")
 
-            putative = putative.up
-
-            if putative == direct_toytree.treenode:
-                print(f'Got all the way to root: mutation {mut} observed in leaf {leaf.name}')
-                break
-        try:
-            leaf_aa_muts_from_root_emergence[mut][leaf.name] = putative.name
-        except KeyError:
-            leaf_aa_muts_from_root_emergence[mut] = {leaf.name: putative.name}
-
-distinct_emergences = {mut: len(set(v.values())) for mut, v in leaf_aa_muts_from_root_emergence.items()}
-
-
-canvas, axes, mark = direct_toytree.draw(
-    tip_labels=True,
-    height=8000,
-    width=4000,
-    tip_labels_style={ "font-size": "8px",},
-    node_colors=('count_new_aa_muts', 'BlueRed'),
-    node_sizes=10,
-    node_mask=False,
-    node_labels='count_new_aa_muts',
-    node_labels_style={'font-size': '8px', 'fill': '#66aa66'},
-    node_style={'stroke': None},
-)
-
-toytree.save(canvas, "/tmp/drawing.svg")
+with open(dated_mutations_tsv, 'w+') as f:
+    dated_muts_df.to_csv(f, sep='\t', index=False)

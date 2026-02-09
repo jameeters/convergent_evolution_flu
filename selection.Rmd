@@ -12,18 +12,21 @@ library(ggrepel)
 library(stringr)
 library(ggpubr)
 library(ggpmisc)
+library(lubridate)
 
 theme_set(theme_bw())
 setwd('/Users/james/Documents/convergent')
 ```
 
+### Read Mutations Data
+
 ```{r read_files, include=F}
 # HA data
-mutations = read.csv('out/codon_mutation_counts_bovine_ha.tsv', sep='\t') %>% 
+mutations = read.csv('out_bovine_b3.13_ha/codon_mutation_counts_bovine_ha.tsv', sep='\t') %>% 
   mutate(host='bovine')
 mutations = full_join(
   mutations,
-  read.csv('out_avian_b3.13/codon_mutation_counts_ha.tsv', sep='\t') %>% 
+  read.csv('out_avian_b3.13_ha/codon_mutation_counts_ha.tsv', sep='\t') %>% 
     mutate(host='avian')
 )
 mutations = mutations %>% mutate(gene='HA')
@@ -634,5 +637,170 @@ ggplot(aes(x=dms_value, y=log(ratio))) +
 ```
 
 
+## Dates
+
+```{r read_dates, echo=F, include=T}
+dated_mutations = read.csv('out_bovine_b3.13_ha/dated_mutations.tsv', sep = '\t') %>% 
+  mutate(gene = 'HA', host = 'bovine')
+dated_mutations = full_join(
+  dated_mutations,
+  read.csv('out_avian_b3.13_ha/dated_mutations.tsv', sep = '\t') %>% 
+    mutate(gene = 'HA', host = 'avian')
+)
+dated_mutations = full_join(
+  dated_mutations,
+  read.csv('out_bovine_b3.13_pb2/dated_mutations.tsv', sep = '\t') %>%  
+    mutate(gene = 'PB2', host = 'bovine')
+)
+
+dated_mutations = full_join(
+  dated_mutations,
+  read.csv('out_avian_b3.13_pb2/dated_mutations.tsv', sep = '\t') %>%  
+    mutate(
+      gene = 'PB2',
+      host = 'avian',
+      numeric.date = as.numeric(numeric.date)
+      )
+)
+
+missing_dates = dated_mutations %>% filter(is.na(numeric.date)) %>% nrow()
+if (missing_dates > 0) {
+  print(paste0('Warning: missing dates for ', missing_dates, ' mutations. They will be dropped.'))
+}
+
+dated_mutations = dated_mutations %>% 
+  filter(!is.na(numeric.date)) %>% 
+  mutate(
+    date = ymd(date),
+    year = year(date),
+    month = month(date),
+    synonymous = ref_aa == alt_aa,
+  ) %>% 
+  select(!c(count, numeric.date, ref_nt, alt_nt, pos_start_nt))
+
+sample_dates = dated_mutations %>% 
+  select(c(node, date, host, year, month)) %>% 
+  filter(str_starts(node, 'SRR')) %>% 
+  unique()
+
+# dated_mutations = dated_mutations %>%
+#   left_join(
+#     sample_dates %>%
+#       group_by(year, month) %>%
+#       summarize(month_count=n()),
+#     by = join_by(year, month)
+#   )
+
+dated_mutations_dn_ds_dms = dated_mutations %>% 
+  left_join(
+    dn_ds_dms_by_mutation,
+    by=join_by(gene, host, ref_aa, pos_aa, alt_aa),
+    relationship = 'many-to-many'
+  ) %>% 
+  filter(! is.na(dms_name))
+
+
+
+dated_mutations_dn_ds_dms_flumut = dated_mutations %>% 
+  left_join(
+    flumut_dn_ds_dms,
+    by = join_by(host, gene, pos_aa, ref_aa, alt_aa),
+    relationship = 'many-to-many'
+  ) %>% 
+  left_join(
+    dated_mutations %>% 
+      group_by(year, month, host) %>%
+      summarize(month_count=n()),
+      by = join_by(year, month, host)
+  )
+
+monthly_mutations_flumut = dated_mutations %>% 
+  rename(
+    y = year,
+    m = month
+  ) %>% 
+  mutate(month=paste(y, str_pad(m, 2, pad='0'), sep='-')) %>% 
+  group_by(host, gene, pos_aa, ref_aa, alt_aa, y, m, month) %>% 
+  summarize(count = n()) %>% 
+  left_join(
+    flumut,
+    by=join_by(gene, pos_aa, ref_aa, alt_aa),
+    relationship = 'many-to-many'
+  ) %>% 
+  left_join(
+    dated_mutations %>% 
+      group_by(year, month, host, gene) %>%
+      summarize(month_count=n()),
+      by = join_by(host, y==year, m==month, gene)
+  )
+```
+### Sample dates
+
+```{r sample_dates, include=T, echo=F}
+sample_dates %>% 
+ggplot() +
+  geom_histogram(aes(x = date)) +
+  facet_wrap(vars(host), scales='fixed', labeller = label_wrap_gen(multi_line=FALSE), ncol=1) +
+  ggtitle('Sample Dates')
+
+```
+
+
+
+### position vs date
+```{r position_vs_date, include=T, echo=F}
+ggplot(dated_mutations, aes(x=date, y=pos_aa)) +
+  geom_point(aes(color=synonymous), alpha=0.4) +
+  facet_wrap(vars(host, gene), scales='fixed', labeller = label_wrap_gen(multi_line=FALSE))
+```
+
+### dN/dS vs date
+```{r dn_ds_vs_date, include=T, echo=F}
+ggplot(dated_mutations_dn_ds_dms, aes(x=date, y=ratio)) +
+  geom_point(alpha=0.4) +
+  facet_wrap(vars(host, gene), scales='fixed', labeller = label_wrap_gen(multi_line=FALSE)) 
+```
+
+### DMS vs date
+```{r dms_vs_date_ha, include=T, echo=F, fig.width=10, fig.height=9}
+dated_mutations_dn_ds_dms %>% filter(gene == 'HA') %>% 
+ggplot(aes(x=date, y=dms_value)) +
+  geom_point(alpha=0.4) +
+  facet_wrap(vars(dms_name, host), scales='free_y', labeller = label_wrap_gen(multi_line=FALSE)) 
+```
+
+```{r dms_vs_date_pb2, include=T, echo=F, fig.width=5}
+dated_mutations_dn_ds_dms %>% filter(gene == 'PB2') %>% 
+ggplot(aes(x=date, y=dms_value)) +
+  geom_point(alpha=0.4) +
+  facet_wrap(vars(dms_name, host), scales='free_y', labeller = label_wrap_gen(multi_line=FALSE)) 
+```
+
+```{r, phenotypes_by_date, include=T, echo=F, fig.width=10, fig.height=6}
+monthly_mutations_flumut %>% 
+  group_by(y, m, month, host, gene, flumut_effect_name, month_count) %>% 
+  summarize(
+    count = sum(count),
+  ) %>% 
+  filter(!is.na(flumut_effect_name)) %>%
+ggplot(aes(x=month, y=count)) + 
+  geom_col(aes(fill=flumut_effect_name), position = position_dodge()) +
+  facet_wrap(vars(host, gene), labeller = label_wrap_gen(multi_line=FALSE), ncol=1) +
+  theme(axis.text.x = element_text(angle = -30, vjust = 0.5, hjust=0)) +
+  ggtitle('Count of annotations observed by month')
+
+monthly_mutations_flumut %>% 
+  group_by(y, m, month, host, gene, flumut_effect_name, month_count) %>% 
+  summarize(
+    count = sum(count),
+  ) %>% 
+  filter(!is.na(flumut_effect_name)) %>%
+  mutate(normed_count = count / month_count) %>% 
+ggplot(aes(x=month, y=normed_count)) + 
+  geom_col(aes(fill=flumut_effect_name), position = position_dodge()) +
+  facet_wrap(vars(host, gene), labeller = label_wrap_gen(multi_line=FALSE), ncol=1) +
+  theme(axis.text.x = element_text(angle = -30, vjust = 0.5, hjust=0)) +
+  ggtitle('Fraction of observed mutations annotated by month')
+```
 
 
