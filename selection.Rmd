@@ -1,7 +1,7 @@
 ---
 title: "flu_selection"
 output: html_document
-date: "2026-01-22"
+date: '`r format(Sys.Date(), "%d %B %Y")`'
 ---
 ## Setup
 ```{r setup, include=FALSE}
@@ -639,7 +639,7 @@ ggplot(aes(x=dms_value, y=log(ratio))) +
 
 ## Dates
 
-```{r read_dates, echo=F, include=T}
+```{r read_dates, echo=F, include=F, warning=F}
 dated_mutations = read.csv('out_bovine_b3.13_ha/dated_mutations.tsv', sep = '\t') %>% 
   mutate(gene = 'HA', host = 'bovine')
 dated_mutations = full_join(
@@ -683,14 +683,6 @@ sample_dates = dated_mutations %>%
   filter(str_starts(node, 'SRR')) %>% 
   unique()
 
-# dated_mutations = dated_mutations %>%
-#   left_join(
-#     sample_dates %>%
-#       group_by(year, month) %>%
-#       summarize(month_count=n()),
-#     by = join_by(year, month)
-#   )
-
 dated_mutations_dn_ds_dms = dated_mutations %>% 
   left_join(
     dn_ds_dms_by_mutation,
@@ -698,8 +690,6 @@ dated_mutations_dn_ds_dms = dated_mutations %>%
     relationship = 'many-to-many'
   ) %>% 
   filter(! is.na(dms_name))
-
-
 
 dated_mutations_dn_ds_dms_flumut = dated_mutations %>% 
   left_join(
@@ -739,19 +729,10 @@ monthly_mutations_flumut = dated_mutations %>%
 ```{r sample_dates, include=T, echo=F}
 sample_dates %>% 
 ggplot() +
-  geom_histogram(aes(x = date)) +
+  geom_histogram(aes(x = date), bins=50) +
   facet_wrap(vars(host), scales='fixed', labeller = label_wrap_gen(multi_line=FALSE), ncol=1) +
   ggtitle('Sample Dates')
 
-```
-
-
-
-### position vs date
-```{r position_vs_date, include=T, echo=F}
-ggplot(dated_mutations, aes(x=date, y=pos_aa)) +
-  geom_point(aes(color=synonymous), alpha=0.4) +
-  facet_wrap(vars(host, gene), scales='fixed', labeller = label_wrap_gen(multi_line=FALSE))
 ```
 
 ### dN/dS vs date
@@ -776,6 +757,9 @@ ggplot(aes(x=date, y=dms_value)) +
   facet_wrap(vars(dms_name, host), scales='free_y', labeller = label_wrap_gen(multi_line=FALSE)) 
 ```
 
+## Annotations
+
+### Mutations by date
 ```{r, phenotypes_by_date, include=T, echo=F, fig.width=10, fig.height=6}
 monthly_mutations_flumut %>% 
   group_by(y, m, month, host, gene, flumut_effect_name, month_count) %>% 
@@ -784,7 +768,7 @@ monthly_mutations_flumut %>%
   ) %>% 
   filter(!is.na(flumut_effect_name)) %>%
 ggplot(aes(x=month, y=count)) + 
-  geom_col(aes(fill=flumut_effect_name), position = position_dodge()) +
+  geom_col(aes(fill=flumut_effect_name), color='white') +
   facet_wrap(vars(host, gene), labeller = label_wrap_gen(multi_line=FALSE), ncol=1) +
   theme(axis.text.x = element_text(angle = -30, vjust = 0.5, hjust=0)) +
   ggtitle('Count of annotations observed by month')
@@ -803,4 +787,245 @@ ggplot(aes(x=month, y=normed_count)) +
   ggtitle('Fraction of observed mutations annotated by month')
 ```
 
+### Intrahost annotations
+```{r intrahost_annots_setup, include=F, echo=F}
+if(file.exists('data/ihv_flumut_annotations_by_month.tsv')){
+  ihv_annots = read.csv('data/ihv_flumut_annotations_by_month.tsv', sep='\t')
+} else {
+  effect_names = c(
+    'Contact transmission in ferrets',
+    'Contact transmission in guinea pigs',
+    'Contributes to airborne pathogenicity in ferrets',
+    'Contributes to contact transmission in guinea pigs',
+    'Decreased pathogenicity in mice',
+    'Decreased polymerase activity in avian cells',
+    'Decreased polymerase activity in mammalian cells',
+    'Decreased replication in avian cells',
+    'Decreased virulence in ducks',
+    'Decreased virulence in ferrets',
+    'Decreased virulence in mice',
+    'Decreased virus binding to α2-3',
+    'Decreases virulence in chickens',
+    'Distruption of the second sialic acid binding site (2SBS)',
+    'Enhanced contact transmission in ferrets',
+    'Enhanced polymerase activity',
+    'Enhanced replication in ferrets',
+    'Enhanced replication in guinea pigs',
+    'From normal to highly reduced inhibition to Peramivir',
+    'From normal to reduced inhibition to Zanamivir',
+    'From reduced to highly reduced inhibition to Oseltamivir',
+    'From reduced to highly reduced inhibition to Peramivir',
+    'Highly reduced inhibition to Oseltamivir',
+    'Highly reduced inhibition to Peramivir',
+    'Highly reduced inhibition to Zanamivir',
+    'Increased infectivity in mammalian cells',
+    'Increased polymerase activity in avian cells',
+    'Increased polymerase activity in chickens (but not ducks)',
+    'Increased polymerase activity in guinea pigs',
+    'Increased polymerase activity in mammalian cells',
+    'Increased pseudovirus binding to α2-6',
+    'Increased replication in chickens (but not ducks)',
+    'Increased replication in mammalian cells',
+    'Increased resistance to amantadine',
+    'Increased resistance to rimantadine',
+    'Increased virulence in chickens',
+    'Increased virulence in guinea pigs',
+    'Increased virulence in mice',
+    'Increased virus binding to α2-6',
+    'Maintained virus binding to α2-3',
+    'Reduced inhibition to Oseltamivir',
+    'Reduced inhibition to Zanamiriv',
+    'Reduced susceptibility to Oseltamivir',
+    'Reduced susceptibility to Peramivir',
+    'Reduced susceptibility to Zanamivir',
+    'Resistance to human interferon-induced antiviral factor MxA',
+    'Transmissible among ferrets',
+    'Transmitted via aerosol among ferrets'
+  )
+  
+  req_params = data.frame(
+    gene = c('HA', "PB2"),
+    gff_feature = c('XAJ25415.1', 'XAJ25426.1')
+  ) %>% 
+    cross_join(data.frame(host=c("bovine", "avian"))) %>% 
+    cross_join(data.frame(flumut_effect_name = effect_names))
+  
+  url_stub = 'http://kenny.scripps.edu:8000/v0/annotations:byVariantsAndCollectionDate?date_bin=month'
+  ihv_annots = data.frame()
+
+  for (i in 1:nrow(req_params)) {
+    row = req_params[i,]
+    sras = read.csv(paste0('out_', row$host, '_b3.13_', str_to_lower(row$gene), '/sras_qc_passed.txt'), header=F)$V1
+    effect_url_stub = paste0(url_stub, '&effect_detail=', row$flumut_effect_name)
+    q_stub = paste0('&q=gff_feature=', row$gff_feature)
+    for (sra_chunk in split(sras, ceiling(seq_along(sras)/300))) {
+      accession_filter = paste0('^(', paste(paste0('accession=', sra_chunk), collapse='|'), ')')
+      q_term = paste0(q_stub, accession_filter)
+      url = paste0(effect_url_stub, q_term)
+      req = request(URLencode(url))
+      resp = req_perform(req)
+      parsed = resp_body_json(resp, simplifyVector = T)
+      if (length(parsed != 0)) {
+        ihv_annots = ihv_annots %>% 
+          bind_rows(
+            parsed %>% 
+              select(!proportion) %>% 
+              mutate(
+                  gene=row$gene, 
+                  flumut_effect_name = row$flumut_effect_name, 
+                  host=row$host
+                ) %>% 
+              rename(
+                n_annotated = n
+              )
+          )
+      }
+    }
+  }
+  ihv_annots = ihv_annots %>%
+    group_by(host, gene, date, flumut_effect_name) %>%
+    summarize(n_annotated = sum(n_annotated), n_total = sum(n_total)) %>%
+    mutate(frac_annotated = n_annotated / n_total)
+
+  write.table(ihv_annots, 'data/ihv_flumut_annotations_by_month.tsv', sep='\t', row.names = F, quote = F)
+}
+
+# filter out effects with no annotations
+ihv_annots = ihv_annots %>% 
+  filter(
+    flumut_effect_name %in% (
+      ihv_annots %>% 
+        group_by(flumut_effect_name) %>% 
+        summarize(n = sum(n_annotated)) %>% 
+        filter(n > 0)
+    )$flumut_effect_name
+  )
+```
+
+
+```{r intrahost_annotations_by_date, include=T, echo=F, fig.width=20, fig.height=10}
+ihv_annots %>% 
+ggplot(aes(x=date, y=n_annotated)) + 
+  geom_col(aes(fill=flumut_effect_name), position = position_stack(), color='white') +
+  facet_wrap(vars(host, gene), labeller = label_wrap_gen(multi_line=FALSE), ncol=2) +
+  theme(axis.text.x = element_text(angle = -30, vjust = 0.5, hjust=0)) +
+  ggtitle('Count of observed intrahost variants annotated, by month') +
+  guides(fill = guide_legend(ncol=1))
+
+ihv_annots %>% 
+ggplot(aes(x=date, y=frac_annotated)) + 
+  geom_col(aes(fill=flumut_effect_name), position = position_dodge()) +
+  facet_wrap(vars(host, gene), labeller = label_wrap_gen(multi_line=FALSE), ncol=2) +
+  theme(axis.text.x = element_text(angle = -30, vjust = 0.5, hjust=0)) +
+  ggtitle('Fraction of observed intrahost variants annotated, by month') +
+  guides(fill = guide_legend(ncol=1))
+
+ihv_annots %>% filter(gene == 'HA') %>% 
+  filter(
+    flumut_effect_name %in% (
+      ihv_annots %>% filter(gene == 'HA') %>% 
+        group_by(flumut_effect_name) %>% 
+        summarize(n = sum(n_annotated)) %>% 
+        filter(n > 0)
+    )$flumut_effect_name
+  ) %>% 
+ggplot(aes(x=date, y=n_annotated)) + 
+  geom_col(aes(fill=flumut_effect_name), position = position_fill(), color='white') +
+  facet_wrap(vars(host, gene), labeller = label_wrap_gen(multi_line=FALSE), ncol=1) +
+  theme(axis.text.x = element_text(angle = -30, vjust = 0.5, hjust=0)) +
+  ggtitle('Fraction of annotated intrahost variants, by month') +
+  guides(fill = guide_legend(ncol=1)) +
+  ylab('proportion of annotated variants')
+
+```
+
+```{r all_genotypes_annotations_setup, include=F, echo=F}
+
+ihv_annots_all_genotypes = read.csv('data/flumut_annots_variants_all_genotypes_HA_bovine.tsv', sep='\t') %>% 
+  mutate(host='bovine', gene='HA') %>% 
+  bind_rows(
+    read.csv('data/flumut_annots_variants_all_genotypes_HA_avian.tsv', sep='\t') %>% 
+      mutate(host='avian', gene='HA')
+  ) %>% 
+  rename(
+    n_annotated = n,
+    flumut_effect_name = detail,
+    month = chunk
+  ) %>% 
+  mutate(
+    date = paste(year, str_pad(month, 2, pad='0') , sep='-'),
+    frac_annotated = n_annotated / n_total
+  )
+```
+
+```{r, all_genotypes_annotations, include=T, echo=F, fig.width=14, fig.height=7}
+ihv_annots_all_genotypes %>% 
+ggplot(aes(x=date, y=n_annotated)) + 
+  geom_col(aes(fill=flumut_effect_name), position = position_fill(), color='white') +
+  facet_wrap(vars(host, gene), labeller = label_wrap_gen(multi_line=FALSE), ncol=1) +
+  theme(axis.text.x = element_text(angle = -30, vjust = 0.5, hjust=0)) +
+  ggtitle('Fraction of annotated intrahost variants, by month. All H5N1 genotypes.') +
+  guides(fill = guide_legend(ncol=1)) +
+  ylab('proportion of annotated variants')
+```
+
+```{r, annotations_b3.13_vs_all_genotypes, include=T, echo=F, fig.width=20, fig.height=10}
+ihv_annots %>% 
+  filter(gene == 'HA') %>% 
+  filter(
+    flumut_effect_name %in% (
+      ihv_annots %>% filter(gene == 'HA') %>% 
+        group_by(flumut_effect_name) %>% 
+        summarize(n = sum(n_annotated)) %>% 
+        filter(n > 0)
+    )$flumut_effect_name
+  ) %>%
+  mutate(genotype='B3.13') %>% 
+  bind_rows(
+    ihv_annots_all_genotypes %>% 
+      select(!c(month, year)) %>% 
+      mutate(genotype='any genotype')
+  ) %>% 
+ggplot(aes(x=date, y=n_annotated)) + 
+  geom_col(aes(fill=flumut_effect_name), position = position_fill(), color='white') +
+  facet_wrap(vars(host, gene, genotype), labeller = label_wrap_gen(multi_line=FALSE), ncol=1) +
+  theme(axis.text.x = element_text(angle = -30, vjust = 0.5, hjust=0)) +
+  ggtitle('Fraction of annotated intrahost variants, by month. B3.13 vs all genotypes') +
+  guides(fill = guide_legend(ncol=1)) +
+  ylab('proportion of annotated variants')
+```
+
+
+```{r summed_dms_values_HA, include=F, echo=F}
+mutations_summed_dms_ha =
+dated_mutations_dn_ds_dms %>% 
+  filter(gene == 'HA') %>% 
+  group_by(node, gene, host, date, dms_name) %>% 
+  summarize(
+    dms_value = sum(dms_value),
+    n_values = n()
+  ) %>% 
+  pivot_wider(
+    names_from = dms_name,
+    values_from = c(dms_value, n_values)
+  ) %>% 
+  rename_with(
+    cols = starts_with("dms_value_"),
+    .fn = ~str_remove(string = .x, pattern="^dms_value_")
+  ) %>% 
+  mutate(across(starts_with('n_values_'), ~replace_na(., 0)))
+  
+# How many values represent each thing
+mutations_summed_dms_ha %>% 
+  pivot_longer(
+    cols = starts_with("n_values"), 
+    names_to = 'dms_name',
+    values_to = 'n_dms_values',
+    names_prefix = 'n_values_'
+  ) %>% 
+  ggplot(aes(x=n_dms_values)) +
+  geom_bar() +
+  facet_wrap(~dms_name)
+
+```
 

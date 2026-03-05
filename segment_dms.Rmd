@@ -1,0 +1,145 @@
+---
+title: "h5n1_segment_dms_summary"
+output: html_document
+date: '`r format(Sys.Date(), "%d %B %Y")`'
+---
+# Setup
+```{r setup, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggrepel)
+library(stringr)
+library(ggpubr)
+library(ggpmisc)
+library(lubridate)
+library(ape)
+library(ggtree)
+
+theme_set(theme_bw())
+setwd('/Users/james/Documents/convergent')
+```
+
+```{r read_mutations_data, include=F, echo=F}
+mutations = read.csv('data/dms_mutations_wrt_ref_avian_ha.tsv', sep = '\t') %>%
+  mutate(host = 'avian', gene = 'HA') %>%
+  bind_rows(
+    read.csv('data/dms_mutations_wrt_ref_bovine_ha.tsv', sep = "\t") %>%
+      mutate(host = 'bovine', gene = 'HA')
+  ) %>% 
+  bind_rows(
+    read.csv('data/dms_mutations_wrt_ref_avian_pb2.tsv', sep = "\t") %>%
+      mutate(host = 'avian', gene = 'PB2')
+  ) %>% 
+  bind_rows(
+    read.csv('data/dms_mutations_wrt_ref_bovine_pb2.tsv', sep = "\t") %>%
+      mutate(host = 'bovine', gene = 'PB2')
+  ) %>% 
+  rename(
+    dms_name = phenotype_metric_name,
+    dms_value = value,
+    pos_aa = position_aa
+  ) %>% 
+  mutate(
+    date = ymd(date)
+  ) %>% 
+  filter(dms_name != 'mature_h5_site')
+```
+
+```{r sum_dms_values, include=F, echo=F}
+mutations_summed_dms =
+mutations %>% 
+  summarize(
+    dms_value_sum = sum(dms_value),
+    n_dms_values = n(),
+    .by = c(accession, host, date, dms_name, gene)
+  ) 
+  # pivot_wider(
+  #   names_from = dms_name,
+  #   values_from = c(dms_value, n_values)
+  # ) %>% 
+  # rename_with(
+  #   cols = starts_with("dms_value_"),
+  #   .fn = ~str_remove(string = .x, pattern="^dms_value_")
+  # ) %>% 
+  # mutate(across(starts_with('n_values_'), ~replace_na(., 0)))
+```
+
+## QC Plots
+
+```{r count_dms_values_summed, include=T, echo=F, fig.width=14, fig.height=9}
+# How many values represent each thing
+mutations_summed_dms %>% 
+  ggplot(aes(x=n_dms_values)) +
+  geom_bar() +
+  facet_wrap(vars(dms_name, host, gene), labeller = label_wrap_gen(multi_line=FALSE), scales = 'free_y')
+```
+
+# Overall distributions
+
+```{r dist_of_summed_values, include=T, echo=F, fig.width=13, fig.height=10}
+ggplot(mutations_summed_dms, aes(x = dms_value_sum)) +
+  geom_histogram() +
+  facet_wrap(vars(dms_name, host, gene), labeller = label_wrap_gen(multi_line=FALSE), scales='free', ncol=4)
+
+ggplot(mutations_summed_dms, aes(x = date, y=dms_value_sum)) +
+  geom_point(aes(color = n_dms_values)) +
+  scale_color_viridis_c() +
+  facet_wrap(vars(dms_name, host, gene), labeller = label_wrap_gen(multi_line=FALSE), scales='free_y', ncol=4)
+```
+
+# Go to Ombrosa, take to the trees
+
+```{r set_up_trees, include=F, echo=F}
+tree_bovine_ha = read.nexus('out_bovine_b3.13_ha/ancestral/annotated_tree.nexus')
+tree_avian_ha = read.nexus('out_avian_b3.13_ha/ancestral/annotated_tree.nexus')
+tree_bovine_pb2 = read.nexus('out_bovine_b3.13_pb2/ancestral/annotated_tree.nexus')
+tree_avian_pb2 = read.nexus('out_avian_b3.13_pb2/ancestral/annotated_tree.nexus')
+
+get_dms_values = function(tips, dms_name) {
+  joined = data.frame(accession=tips, dms_name=dms_name) %>% 
+    left_join(mutations_summed_dms, by=join_by(accession, dms_name)) %>% 
+    select(accession, dms_value_sum)
+
+  return(joined)
+}
+
+```
+
+## Bovine HA
+
+```{r plot_dms_colored_trees_bovine_ha, include=T, echo=F, fig.height=20, fig.width=10}
+plot_dms_tree = function(dms_name, tree, host, gene){
+  dms_values = get_dms_values(tree$tip.label, dms_name)
+  p = ggtree(tree)
+  p = p %<+% dms_values +
+      geom_tippoint(aes(color=dms_value_sum), size=2) +
+      scale_color_viridis_c() +
+      ggtitle(paste(paste(host, gene, "B3.13", sep = ', '), dms_name, sep = " | ")) +
+      theme(plot.title = element_text(size = 16, face = "bold", vjust = 0)) + 
+      theme(panel.border = element_rect()) +
+      expand_limits(y = c(-20, nrow(dms_values) + 20))
+  print(p)
+}
+
+for (name in (mutations_summed_dms %>% filter(gene == 'HA') %>% select(dms_name) %>% unique())$dms_name) {
+  plot_dms_tree(name, tree_bovine_ha, "Bovine", "HA")
+}
+```
+
+## Avian HA
+
+```{r plot_dms_colored_trees_avian_ha, include=T, echo=F, fig.height=20, fig.width=10}
+for (name in (mutations_summed_dms %>% filter(gene == 'HA') %>% select(dms_name) %>% unique())$dms_name){
+  plot_dms_tree(name, tree_avian_ha, 'Avian', "HA")
+}
+```
+
+## PB2
+
+```{r plot_dms_colored_trees_pb2, include=T, echo=F, fig.height=20, fig.width=10}
+plot_dms_tree("mutdiffsel", tree_bovine_pb2, "Bovine", "PB2")
+plot_dms_tree("mutdiffsel", tree_avian_pb2, "Avian", "PB2")
+```
+
+
