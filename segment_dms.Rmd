@@ -19,6 +19,7 @@ library(lubridate)
 library(ape)
 library(ggtree)
 library(phangorn)
+library(patchwork)
 
 theme_set(theme_bw())
 setwd('/Users/james/Documents/convergent')
@@ -155,6 +156,32 @@ mutations_summed_dms =
       ) %>% 
       mutate(seq_type = 'ancestral')
   )
+
+mutations_summed_dms_cows_vs_all = read.csv('data/mutations_dms_non_bovine_non_b3_13.tsv', sep = '\t') %>% 
+  rename(
+    date = mid_collection_date,
+    host_raw = host,
+    dms_name = phenotype_metric_name,
+    gene = gff_feature
+  ) %>% 
+  filter(dms_name != 'mature_h5_site') %>% 
+  mutate(
+    gene = case_when(
+      gene == 'XAJ25426.1' ~ 'PB2', 
+      gene == 'XAJ25415.1' ~ "HA",
+      .default = gene
+    ),
+    host = 'non-bovine',
+    date = ymd(date)
+  ) %>% 
+  bind_rows(
+    mutations_summed_dms %>% 
+      filter(host == 'bovine') %>% 
+      mutate(
+        lineage_name = 'B3.13'
+      ) %>% 
+      select(!seq_type)
+  )
 ```
 
 ## QC Plots
@@ -172,6 +199,19 @@ mutations_summed_dms %>% filter(seq_type == 'ancestral') %>%
   geom_bar() +
   facet_wrap(vars(dms_name, host, gene), labeller = label_wrap_gen(multi_line=FALSE), scales = 'free_y') +
   ggtitle("count dms values summed: ancestral nodes")
+
+mutations_summed_dms_cows_vs_all %>% filter(host == 'non-bovine') %>% 
+  ggplot(aes(x=n_dms_values)) +
+  geom_bar() +
+  facet_wrap(vars(dms_name, host, gene), labeller = label_wrap_gen(multi_line=FALSE), scales = 'free_y') +
+  ggtitle("count dms values summed: non-bovine, non-B3.13 samples")
+
+mutations_summed_dms_cows_vs_all %>% 
+  select(accession, date) %>% 
+  distinct() %>% 
+  ggplot() +
+  geom_histogram(aes(x=date, y=after_stat(density)), bins=60) +
+  ggtitle('Distribution of sample dates')
 ```
 
 ### Missing DMS Values: ancestral seqs
@@ -179,6 +219,7 @@ mutations_summed_dms %>% filter(seq_type == 'ancestral') %>%
 How many of our mutations do we have DMS data for?
 This is counting by position, ref, and alt. 
 This is only for ancestral sequence mutations (wrt ref).
+
 ```{r missing_dms_values, include=T, echo=F}
 # count how many positions are missing values
 wide_dms_by_mutation = ancestor_muts_dms %>% 
@@ -227,6 +268,7 @@ ggplot(aes(x = date, y=dms_value_sum)) +
   scale_color_viridis_c() +
   facet_wrap(vars(dms_name, host, gene), labeller = label_wrap_gen(multi_line=FALSE), scales='free_y', ncol=4) +
   ggtitle('dms sums by date within sample seqs')
+
 ```
 
 ## Ancestors
@@ -244,6 +286,54 @@ ggplot(aes(x = date, y=dms_value_sum)) +
   facet_wrap(vars(dms_name, host, gene), labeller = label_wrap_gen(multi_line=FALSE), scales='free_y', ncol=4) +
     ggtitle('dms sums by date within ancestral seqs')
 ```
+
+## Cows vs the world
+
+The "Cows" here are the bovine B3.13 samples used in the rest of my analysis.
+The "world" is a set of samples from non-bovine hosts, with lineages other than
+B3.13 listed (so any sample with no lineage is excluded) and with a "collection span" <= 10 days.
+See the SQL queries for details.
+
+```{r dist_of_summed_values_cows_vs_world, include=T, echo=F, fig.width=13, fig.height=11}
+pl = plot_list()
+for (name in (mutations_summed_dms_cows_vs_all %>% select(dms_name) %>% unique())$dms_name) {
+ pl = pl + mutations_summed_dms_cows_vs_all %>% filter(dms_name == name) %>% 
+  ggplot(aes(x = dms_value_sum)) +
+    geom_histogram(aes(y=after_stat(density)), bins=50) +
+    facet_wrap(vars(host, gene), labeller = label_wrap_gen(multi_line=FALSE), scales='fixed', ncol=1) +
+    ggtitle(name) +
+    theme(plot.title = element_text(size = 10, vjust = 0))
+}
+pl = pl + plot_layout(ncol=3) +
+  plot_annotation(
+    title = 'DMS value sum distributions, bovine B3.13 vs non-bovine non-B3.13' 
+  )
+print(pl)  
+  
+mutations_summed_dms_cows_vs_all %>% 
+ggplot(aes(x = date, y=dms_value_sum)) +
+  geom_point(aes(color = n_dms_values)) +
+  scale_color_viridis_c() +
+  facet_wrap(vars(dms_name, host, gene), labeller = label_wrap_gen(multi_line=FALSE), scales='free_y', ncol=4) +
+  ggtitle('dms sums by date, bovine B3.13 vs non-bovine non-B3.13')
+```
+
+```{r non-bovine_only, include=T, echo=F, fig.height=15, fig.width=15}
+mutations_summed_dms_cows_vs_all %>% filter(host == 'non-bovine') %>%
+  inner_join(
+    mutations_summed_dms_cows_vs_all %>%
+      filter(host == 'non-bovine') %>%
+      summarize(count_samples = n(), .by = host_raw),
+    by = join_by(host_raw)
+  ) %>%
+  filter(count_samples >= 100) %>%
+  ggplot(aes(x=host_raw, y=dms_value_sum)) +
+  geom_boxplot() +
+  facet_wrap(vars(dms_name, gene), labeller = label_wrap_gen(multi_line=FALSE), scales='free_y', ncol=2) +
+  theme(axis.text.x = element_text(angle = -90, vjust = 0.5, hjust=0, size = 8)) +
+  ggtitle('dms value sums for non-B3.13, non-bovine hosts with >= 100 samples')
+```
+
 
 # Go to Ombrosa, take to the trees
 
