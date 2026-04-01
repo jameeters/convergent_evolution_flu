@@ -53,7 +53,7 @@ mutations = read.csv('data/dms_mutations_wrt_ref_avian_ha.tsv', sep = '\t') %>%
 
 ```{r set_up_ancestral_mutation_data, include=F, echo=F}
 # read ancestral mutations
-ancestor_muts_dms = read.csv('out_bovine_b3.13_ha/mutations_wrt_ref.tsv', sep = "\t") %>% 
+ancestor_muts_dms = read.csv('new_out_bovine_b3.13_ha/mutations_wrt_ref.tsv', sep = "\t") %>% 
   mutate(host='bovine', gene = 'HA') %>% 
   bind_rows(
     read.csv('out_avian_b3.13_ha/mutations_wrt_ref.tsv', sep = "\t") %>% 
@@ -75,7 +75,7 @@ ancestor_dates = read.csv('out_avian_b3.13_ha/treetime/dates.tsv', sep='\t') %>%
   mutate(host='avian', gene='HA') %>% 
   select(! c(numeric.date)) %>% 
   bind_rows(
-    read.csv('out_bovine_b3.13_ha/treetime/dates.tsv', sep='\t') %>% 
+    read.csv('new_out_bovine_b3.13_ha/treetime/dates.tsv', sep='\t') %>% 
       mutate(host='bovine', gene='HA') %>% 
       select(! c(numeric.date))
   ) %>% 
@@ -338,10 +338,15 @@ mutations_summed_dms_cows_vs_all %>% filter(host == 'non-bovine') %>%
 # Go to Ombrosa, take to the trees
 
 ```{r set_up_trees, include=F, echo=F}
-tree_bovine_ha = read.nexus('out_bovine_b3.13_ha/ancestral/annotated_tree.nexus')
-tree_avian_ha = read.nexus('out_avian_b3.13_ha/ancestral/annotated_tree.nexus')
-tree_bovine_pb2 = read.nexus('out_bovine_b3.13_pb2/ancestral/annotated_tree.nexus')
-tree_avian_pb2 = read.nexus('out_avian_b3.13_pb2/ancestral/annotated_tree.nexus')
+# tree_bovine_ha = read.nexus('out_bovine_b3.13_ha/ancestral/annotated_tree.nexus')
+# tree_avian_ha = read.nexus('out_avian_b3.13_ha/ancestral/annotated_tree.nexus')
+# tree_bovine_pb2 = read.nexus('out_bovine_b3.13_pb2/ancestral/annotated_tree.nexus')
+# tree_avian_pb2 = read.nexus('out_avian_b3.13_pb2/ancestral/annotated_tree.nexus')
+
+tree_bovine_ha = read.nexus('new_out_bovine_b3.13_ha/treetime/timetree.nexus')
+tree_avian_ha = read.nexus('out_avian_b3.13_ha/treetime/timetree.nexus')
+tree_bovine_pb2 = read.nexus('out_bovine_b3.13_pb2/treetime/timetree.nexus')
+tree_avian_pb2 = read.nexus('out_avian_b3.13_pb2/treetime/timetree.nexus')
 
 get_dms_values = function(nodes, dms_name) {
   joined = data.frame(accession=nodes, dms_name=dms_name) %>% 
@@ -407,6 +412,7 @@ get_edge_dms_deltas_vec = function(tree, edge_dms, dms_name) {
 ## Bovine HA
 
 ```{r plot_dms_colored_trees_bovine_ha, include=T, echo=F, fig.height=20, fig.width=10}
+
 plot_dms_tree = function(dms_name, tree, host, gene){
   dms_values = get_dms_values(tree$tip.label, dms_name)
   p = ggtree(tree)
@@ -414,7 +420,7 @@ plot_dms_tree = function(dms_name, tree, host, gene){
       geom_tippoint(aes(color=dms_value_sum), size=2) +
       scale_color_viridis_c() +
       ggtitle(paste(paste(host, gene, "B3.13", sep = ', '), dms_name, sep = " | ")) +
-      theme(plot.title = element_text(size = 16, face = "bold", vjust = 0)) + 
+      theme(plot.title = element_text(size = 16, face = "bold", vjust = 0)) +
       theme(panel.border = element_rect()) +
       expand_limits(y = c(-20, length(tree$tip.label) + 20))
   print(p)
@@ -507,4 +513,180 @@ plot_dms_tree_edge_deltas(tree_avian_pb2, edge_dms_avian_pb2, 'avian', 'PB2', 'm
 
 ```
 
+# DMS time series
+
+```{r calc_branch_dms_time_series, include=F, echo=F}
+# get_branch_dms_ts = function(tree, host_, gene_) {
+
+tree = tree_bovine_ha
+host_ = 'bovine'
+gene_ = 'HA'
+  
+  branch_dms = data.frame()
+  
+  # tree has two vectors of labels, tip.label and node.label
+  # Ancestors() treats them as numbered 1, ..., N, N+1, N+M
+  # where N is the number of samples, and M is the number of internal nodes.
+  all_labels = c(tree$tip.label, tree$node.label)
+  for(sample in tree$tip.label[1]) {
+    ancestor_idxs = Ancestors(tree, sample)
+    ancestors = all_labels[ancestor_idxs]
+    
+    branch_dms = branch_dms %>% bind_rows(
+      data.frame(
+        accession = c(sample, ancestors),
+        branch_leaf = sample,
+        ancestor_number = seq(0, length(ancestors)),
+        ancestor_count = length(ancestors),
+        gene = gene_,
+        host = host_
+      )
+    )
+  }
+  branch_dms = left_join(
+    branch_dms,
+    mutations_summed_dms,
+    by = join_by(accession, gene, host),
+    relationship = 'many-to-many'
+  ) %>% 
+    group_by(branch_leaf) %>%
+    mutate(
+      branch_mindate = min(date, na.rm = T),
+      branch_maxdate = max(date, na.rm = T)
+    ) 
+  #   filter(!is.na(dms_name)) %>% 
+  #   group_by(branch_leaf, dms_name) %>% 
+  #   mutate(
+  #     delta_dms_sum = dms_value_sum - lag(dms_value_sum, order_by = -ancestor_number),
+  #     # this has not been very useful
+  #     cum_delta_dms_sum = dms_value_sum - first(dms_value_sum, order_by = -ancestor_number)
+  #   ) 
+        
+#   return(branch_dms)
+# }
+# 
+# branches_dms_bovine_ha = get_branch_dms_ts(tree_bovine_ha, 'bovine', 'HA')
+# branches_dms_bovine_pb2 = get_branch_dms_ts(tree_bovine_pb2, 'bovine', 'PB2')
+```
+
+
+```{r plot_branch_dms_ts, include=T, echo=F, fig.height=7, fig.width=10}
+# this is selecting the clade that shows higher sa26 usage increase.
+leaf_sample = tree_bovine_ha$tip.label[
+    Descendants(tree_bovine_ha, 'NODE_0001662', type='tips') %>% 
+      unlist()
+  ]
+print(length(leaf_sample))
+
+# tried using as the time axis:
+# frac_along_branch = (ancestor_count - ancestor_number) / ancestor_count
+# didn't really help... (31 mar 2026)
+# maybe something like this would work better if it were based on the dates instead?
+
+branches_dms_bovine_ha %>% 
+  filter(branch_leaf %in% leaf_sample) %>% 
+  filter(dms_name == 'sa26_usage_increase') %>% 
+  ggplot(aes(x=date, y=dms_value_sum)) +
+  geom_line(aes(group = branch_leaf, color=branch_leaf), alpha=0.4) +
+  scale_color_discrete(guide='none') +
+  facet_wrap(vars(dms_name), labeller = label_wrap_gen(multi_line=FALSE), scales='free_y', ncol=2) +
+  ggtitle('DMS values along branch | Bovine HA')
+
+branches_dms_bovine_ha %>% 
+  filter(branch_leaf %in% leaf_sample) %>% 
+  filter(dms_name == 'sa26_usage_increase') %>%
+ggplot(aes(x=date, y=delta_dms_sum)) +
+  geom_line(aes(group = branch_leaf, color=branch_leaf, alpha=0.4), alpha=1, na.rm=T) +
+  scale_color_discrete(guide='none') +
+  facet_wrap(vars(dms_name), labeller = label_wrap_gen(multi_line=FALSE), scales='free_y', ncol=2) +
+  ggtitle('Delta in DMS value at each node in branch | Bovine HA')
+
+# branches_dms_bovine_ha %>% 
+#   filter(branch_leaf %in% leaf_sample) %>% 
+#   filter(dms_name == 'sa26_usage_increase') %>% 
+# ggplot(aes(x=date, y=cum_delta_dms_sum)) +
+#   geom_line(aes(group = branch_leaf, color=branch_leaf), alpha=0.4) +
+#   scale_color_discrete(guide='none') +
+#   facet_wrap(vars(dms_name), labeller = label_wrap_gen(multi_line=FALSE), scales='free_y', ncol=2) +
+#   ggtitle('Cumulative delta in DMS value at each node in branch | Bovine HA')
+
+leaf_sample = c('SRR33943324', 'SRR32633084', 'SRR29694479', 'SRR30811300', 'SRR31820877', 'SRR31820835', 'SRR34270150', 'SRR30090365', 'SRR31820843', 'SRR32868633', 'SRR29543338', 'SRR32125668', 'SRR33124614', 'SRR31960125', 'SRR31820958', 'SRR31820946', 'SRR32125732', 'SRR32254306', 'SRR29740713', 'SRR32006798')
+
+branches_dms_bovine_ha %>% 
+  filter(branch_leaf %in% leaf_sample) %>% 
+  ggplot(aes(x=date, y=dms_value_sum)) +
+  geom_line(aes(group = branch_leaf, color=branch_leaf), alpha=0.4) +
+  # scale_color_discrete(guide='none') +
+  facet_wrap(vars(dms_name), labeller = label_wrap_gen(multi_line=FALSE), scales='free_y', ncol=2) +
+  ggtitle('DMS values along branch | Bovine HA')
+
+branches_dms_bovine_ha %>% 
+  filter(branch_leaf %in% leaf_sample) %>% 
+ggplot(aes(x=date, y=delta_dms_sum)) +
+  geom_line(aes(group = branch_leaf, color=branch_leaf, alpha=0.4), alpha=1, na.rm=T) +
+  # scale_color_discrete(guide='none') +
+  facet_wrap(vars(dms_name), labeller = label_wrap_gen(multi_line=FALSE), scales='free_y', ncol=2) +
+  ggtitle('Delta in DMS value at each node in branch | Bovine HA')
+
+
+```
+
+```{r dms_timeseries_regression_bovine_ha, echo=F, include=T, fig.width=12, fig.height=10}
+branches_dms_bovine_ha %>% 
+  ggplot(aes(x=date, y=dms_value_sum)) +
+  geom_point(alpha=0.2) +
+  facet_wrap(vars(dms_name), labeller = label_wrap_gen(multi_line=FALSE), scales='free_y', ncol=3) +
+  ggtitle('DMS values along branch | Bovine HA') +
+  stat_poly_line() +
+  stat_poly_eq(color='blue')
+
+leaf_sample = tree_bovine_ha$tip.label[
+    Descendants(tree_bovine_ha, 'NODE_0001662', type='tips') %>% 
+      unlist()
+  ]
+
+branches_dms_bovine_ha %>% 
+  filter(branch_leaf %in% leaf_sample) %>% 
+  ggplot(aes(x=date, y=dms_value_sum)) +
+  geom_point(alpha=0.2) +
+  facet_wrap(vars(dms_name), labeller = label_wrap_gen(multi_line=FALSE), scales='free_y', ncol=3) +
+  ggtitle('DMS values along branch | Bovine HA') +
+  stat_poly_line() +
+  stat_poly_eq(color='blue')
+```
+
+```{r dms_timeseries_regression_bovine_pb2, echo=F, include=T, fig.width=12, fig.height=10}
+branches_dms_bovine_pb2 %>% 
+  ggplot(aes(x=date, y=dms_value_sum)) +
+  geom_point(alpha=0.2) +
+  facet_wrap(vars(dms_name), labeller = label_wrap_gen(multi_line=FALSE), scales='free_y', ncol=3) +
+  ggtitle('DMS values along branch | Bovine HA') +
+  stat_poly_line() +
+  stat_poly_eq(color='blue')
+
+branches_dms_bovine_pb2 %>% 
+  mutate(
+    frac_along_branch_by_date = (date - branch_mindate) / (branch_maxdate - branch_mindate)
+  ) %>% 
+  ggplot(aes(x=frac_along_branch_by_date, y=dms_value_sum)) +
+  geom_point(alpha=0.2) +
+  facet_wrap(vars(dms_name), labeller = label_wrap_gen(multi_line=FALSE), scales='free_y', ncol=3) +
+  ggtitle('DMS values along branch | Bovine HA') +
+  stat_poly_line() +
+  stat_poly_eq(color='blue')
+
+# leaf_sample = tree_bovine_ha$tip.label[
+#     Descendants(tree_bovine_ha, 'NODE_0001662', type='tips') %>% 
+#       unlist()
+#   ]
+# 
+# branches_dms_bovine_ha %>% 
+#   filter(branch_leaf %in% leaf_sample) %>% 
+#   ggplot(aes(x=date, y=dms_value_sum)) +
+#   geom_point(alpha=0.2) +
+#   facet_wrap(vars(dms_name), labeller = label_wrap_gen(multi_line=FALSE), scales='free_y', ncol=3) +
+#   ggtitle('DMS values along branch | Bovine HA') +
+#   stat_poly_line() +
+#   stat_poly_eq(color='blue')
+```
 

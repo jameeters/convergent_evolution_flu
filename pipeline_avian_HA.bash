@@ -1,7 +1,7 @@
 #! /bin/bash
 set -euxo pipefail
 
-OUT_DIR='out_avian_b3.13_ha'
+OUT_DIR='new_out_avian_b3.13_ha'
 
 SRAS_FILE="data/sras_avian_b3.13.txt"
 FASTAS_DIR="/Users/james/Documents/avian-influenza/fasta"
@@ -53,4 +53,9 @@ python3 translate.py \
 python3 read_tree.py \
 "$TRANSLATION_OUT_DIR" \
 "$TREETIME_OUT_DIR" \
+"$OUT_DIR"
+
+python3 call_aa_muts.py \
+"$REF_FASTA" \
+"$TRANSLATION_OUT_DIR/amino_acids.fasta" \
 "$OUT_DIR"
