@@ -22,11 +22,11 @@ setwd('/Users/james/Documents/convergent')
 
 ```{r read_files, include=F}
 # HA data
-mutations = read.csv('out_bovine_b3.13_ha/codon_mutation_counts_bovine_ha.tsv', sep='\t') %>% 
+mutations = read.csv('out_bovine_b3.13_ha/codon_mutation_counts.tsv', sep='\t') %>% 
   mutate(host='bovine')
 mutations = full_join(
   mutations,
-  read.csv('out_avian_b3.13_ha/codon_mutation_counts_ha.tsv', sep='\t') %>% 
+  read.csv('out_avian_b3.13_ha/codon_mutation_counts.tsv', sep='\t') %>% 
     mutate(host='avian')
 )
 mutations = mutations %>% mutate(gene='HA')
