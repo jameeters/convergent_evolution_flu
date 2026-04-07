@@ -674,10 +674,42 @@ branches_dms_bovine_pb2 %>%
 LBI is calculated using the treetime divergence tree, but the trees shown here are the time trees.
 They have identical topology and node names, but the divergence tree avoids mixing time into the distances between nodes.
 
-Here are the equations:
-\[
-m_{\text{up}_i}
-\]
+Here are the equations, updated to reflect my understanding based on the python implementation at https://github.com/rneher/FitnessInference/blob/master/prediction_src/fitness_inference.py.
+
+The up-message from a node $i$ to its parent is:
+$$
+\mathrm{up}_i = \tau \left(1 - \mathrm{exp}\left(\frac{-(b_i + b_\varepsilon)}{ts \cdot \tau}\right)\right) 
++ \mathrm{exp}\left(\frac{-(b_i + b_\varepsilon)}{ts \cdot \tau}\right) \sum_j \mathrm{up}_j
+$$
+Where $b_i$ is the distance from its parent to node $i$, and nodes $j$ are children of $i$.
+
+The down-message from $i$ to its child $j$ is given by:
+$$
+\mathrm{dn}_{ij} = \tau \left(1 - \mathrm{exp}\left(\frac{-(b_j + b_\varepsilon)}{ts \cdot \tau}\right)\right) 
++ \mathrm{exp}\left(\frac{-(b_j + b_\varepsilon)}{ts \cdot \tau}\right) \left( \mathrm{dn}_{\cdot i} + \sum_{k \neq j} \mathrm{up}_{k} \right)
+$$
+Where $b_j$ is distance from $i$ to $j$, $\mathrm{dn}_{\cdot i}$ is the down-message passed to $i$ from its parent, and nodes $k$ are children of $i$.
+
+$b_\varepsilon$ is a small shim value used to prevent having branch lengths of 0.
+The paper's implementation uses both 1e-5 and 1e-7, and I used the latter in my implementation.
+I'm not entirely sure what they're trying to prevent here, I don't think that allowing the branch length to be 0 would radically change the shape of the output.
+
+$ts$ is a time scale value, calculated based on a simple pairwise distance metric on the aligned sequences.
+$ts = \frac{\text{mean pairwise distance}}{2}$.
+
+The paper says that, optimally, $\tau = 0.0625$, but in the implementation, twice that value is used in the actual calculations.
+As I understand it, this is because the value of $0.0625$ is meant to be with respect to pairwise genetic distance, but the branch lengths in the tree are instead in units of pair coalescent time, which is assumed to be related to twice the genetic distance.
+In my implementation I've copied this and used a value of $\tau = 2 \cdot 0.625$.
+
+Once all the up and down messages are in place, the final value for each node $i$ is given by:
+$$
+\lambda_i(\tau) = \mathrm{dn}_{\cdot i} + \sum_j \mathrm{up}_j
+$$
+
+
+
+$\tau$ is a scalar used to control how large a neighborhood of the tree is considered.
+The Neher paper recommends a value of 0.0625 * the average pairwise distance between parents and children in the tree.
 
 The Neher paper also uses a shim value added to node distances in the calculations to avoid them being zero
 
@@ -698,7 +730,27 @@ local_branching_index = read.csv('out_bovine_b3.13_ha/local_branching_index.tsv'
   ) %>% 
   rename(accession = node)
 
+lbi_new = read.csv('out_avian_b3.13_pb2/local_branching_index_shim.tsv', sep="\t") %>% 
+  mutate(gene='PB2', host='avian') %>% 
+  rename(accession = node) %>% 
+  bind_rows(
+    read.csv('out_avian_b3.13_ha/local_branching_index_shim.tsv', sep="\t") %>% 
+    mutate(gene='HA', host='avian') %>% 
+    rename(accession = node)
+  ) %>% 
+  bind_rows(
+    read.csv('out_bovine_b3.13_pb2/local_branching_index_shim.tsv', sep="\t") %>% 
+    mutate(gene='PB2', host='bovine') %>% 
+    rename(accession = node)
+  ) %>% 
+  bind_rows(
+    read.csv('out_bovine_b3.13_ha/local_branching_index_shim.tsv', sep="\t") %>% 
+    mutate(gene='HA', host='bovine') %>% 
+    rename(accession = node)
+  )
+
 mutations_summed_dms = mutations_summed_dms %>% 
+  select(!lbi) %>% 
   left_join(
       local_branching_index,
       by = join_by(accession, host, gene),
@@ -725,10 +777,33 @@ plot_lbi_tree = function(tree, host_, gene_){
       expand_limits(y = ylim)
   print(p)
 }
+
+plot_lbi_tree_new = function(tree, host_, gene_){
+  ylim_expansion = round(0.01 * length(tree$tip.label))
+  ylim = c(-ylim_expansion, length(tree$tip.label) + ylim_expansion)
+  
+  lbi_values = lbi_new %>% 
+    filter(gene == gene_ & host == host_) %>% 
+    select(accession, lbi)
+  p = ggtree(tree)
+  p = p %<+% lbi_values +
+      geom_tippoint(aes(color=lbi), size=2) +
+      geom_nodepoint(aes(color=lbi), size=2) +
+      scale_color_viridis_c() +
+      ggtitle(paste(paste(host_, gene_, "B3.13", sep = ', '), 'local branching index (new)', sep = " | ")) +
+      theme(plot.title = element_text(size = 16, face = "bold", vjust = 0)) +
+      theme(panel.border = element_rect()) +
+      expand_limits(y = ylim)
+  print(p)
+}
 plot_lbi_tree(tree_bovine_ha, 'bovine', 'HA')
 plot_lbi_tree(tree_avian_ha, 'avian', 'HA')
 plot_lbi_tree(tree_bovine_pb2, 'bovine', 'PB2')
 plot_lbi_tree(tree_avian_pb2, 'avian', 'PB2')
+plot_lbi_tree_new(tree_bovine_ha, 'bovine', 'HA')
+plot_lbi_tree_new(tree_avian_ha, 'avian', 'HA')
+plot_lbi_tree_new(tree_bovine_pb2, 'bovine', 'PB2')
+plot_lbi_tree_new(tree_avian_pb2, 'avian', 'PB2')
 ```
 
 ```{r lbi_vs_dms, echo=F, include=T, fig.height=10, fig.width=10}

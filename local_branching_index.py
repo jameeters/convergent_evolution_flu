@@ -45,6 +45,15 @@ def main(args):
         lines += [f'{n.name}\t{n.lbi}\n' for n in tree]
         f.writelines(lines)
 
+    with open(f'{args.outdir}/local_branching_index_constants.tsv', 'w+') as f:
+        lines = [l + '\n' for l in [
+            'name\tvalue',
+            f'2*tau\t{tau}',
+            f'shim_node_dist\t{shim_node_dist}',
+            f'time_scale\t{time_scale}'
+        ]]
+        f.writelines(lines)
+
 
 def calc_mean_pairwise_dist(msa_fasta: str):
     aln = AlignIO.read(msa_fasta, 'fasta')
