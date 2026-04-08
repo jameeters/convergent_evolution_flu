@@ -697,6 +697,7 @@ I'm not entirely sure what they're trying to prevent here, I don't think that al
 $ts$ is a time scale value, calculated based on a simple pairwise distance metric on the aligned sequences.
 $ts = \frac{\text{mean pairwise distance}}{2}$.
 
+$\tau$ is a scalar used to control how large a neighborhood around each node is considered in calculating its score. 
 The paper says that, optimally, $\tau = 0.0625$, but in the implementation, twice that value is used in the actual calculations.
 As I understand it, this is because the value of $0.0625$ is meant to be with respect to pairwise genetic distance, but the branch lengths in the tree are instead in units of pair coalescent time, which is assumed to be related to twice the genetic distance.
 In my implementation I've copied this and used a value of $\tau = 2 \cdot 0.625$.
@@ -706,51 +707,25 @@ $$
 \lambda_i(\tau) = \mathrm{dn}_{\cdot i} + \sum_j \mathrm{up}_j
 $$
 
-
-
-$\tau$ is a scalar used to control how large a neighborhood of the tree is considered.
-The Neher paper recommends a value of 0.0625 * the average pairwise distance between parents and children in the tree.
-
-The Neher paper also uses a shim value added to node distances in the calculations to avoid them being zero
-
 ```{r set_up_lbi, echo=F, include=F}
-local_branching_index = read.csv('out_bovine_b3.13_ha/local_branching_index.tsv', sep='\t') %>% 
+local_branching_index = read.csv('out_bovine_b3.13_ha/local_branching_index_shim.tsv', sep='\t') %>% 
   mutate(gene='HA', host='bovine') %>% 
   bind_rows(
-    local_branching_index = read.csv('out_bovine_b3.13_pb2/local_branching_index.tsv', sep='\t') %>% 
+    local_branching_index = read.csv('out_bovine_b3.13_pb2/local_branching_index_shim.tsv', sep='\t') %>% 
     mutate(gene='PB2', host='bovine')
   ) %>% 
   bind_rows(
-    local_branching_index = read.csv('out_avian_b3.13_ha/local_branching_index.tsv', sep='\t') %>% 
+    local_branching_index = read.csv('out_avian_b3.13_ha/local_branching_index_shim.tsv', sep='\t') %>% 
     mutate(gene='HA', host='avian')
   ) %>% 
   bind_rows(
-    local_branching_index = read.csv('out_avian_b3.13_pb2/local_branching_index.tsv', sep='\t') %>% 
+    local_branching_index = read.csv('out_avian_b3.13_pb2/local_branching_index_shim.tsv', sep='\t') %>% 
   mutate(gene='PB2', host='avian')
   ) %>% 
   rename(accession = node)
 
-lbi_new = read.csv('out_avian_b3.13_pb2/local_branching_index_shim.tsv', sep="\t") %>% 
-  mutate(gene='PB2', host='avian') %>% 
-  rename(accession = node) %>% 
-  bind_rows(
-    read.csv('out_avian_b3.13_ha/local_branching_index_shim.tsv', sep="\t") %>% 
-    mutate(gene='HA', host='avian') %>% 
-    rename(accession = node)
-  ) %>% 
-  bind_rows(
-    read.csv('out_bovine_b3.13_pb2/local_branching_index_shim.tsv', sep="\t") %>% 
-    mutate(gene='PB2', host='bovine') %>% 
-    rename(accession = node)
-  ) %>% 
-  bind_rows(
-    read.csv('out_bovine_b3.13_ha/local_branching_index_shim.tsv', sep="\t") %>% 
-    mutate(gene='HA', host='bovine') %>% 
-    rename(accession = node)
-  )
-
 mutations_summed_dms = mutations_summed_dms %>% 
-  select(!lbi) %>% 
+  select(!matches('^lbi$')) %>% 
   left_join(
       local_branching_index,
       by = join_by(accession, host, gene),
@@ -778,39 +753,17 @@ plot_lbi_tree = function(tree, host_, gene_){
   print(p)
 }
 
-plot_lbi_tree_new = function(tree, host_, gene_){
-  ylim_expansion = round(0.01 * length(tree$tip.label))
-  ylim = c(-ylim_expansion, length(tree$tip.label) + ylim_expansion)
-  
-  lbi_values = lbi_new %>% 
-    filter(gene == gene_ & host == host_) %>% 
-    select(accession, lbi)
-  p = ggtree(tree)
-  p = p %<+% lbi_values +
-      geom_tippoint(aes(color=lbi), size=2) +
-      geom_nodepoint(aes(color=lbi), size=2) +
-      scale_color_viridis_c() +
-      ggtitle(paste(paste(host_, gene_, "B3.13", sep = ', '), 'local branching index (new)', sep = " | ")) +
-      theme(plot.title = element_text(size = 16, face = "bold", vjust = 0)) +
-      theme(panel.border = element_rect()) +
-      expand_limits(y = ylim)
-  print(p)
-}
 plot_lbi_tree(tree_bovine_ha, 'bovine', 'HA')
 plot_lbi_tree(tree_avian_ha, 'avian', 'HA')
 plot_lbi_tree(tree_bovine_pb2, 'bovine', 'PB2')
 plot_lbi_tree(tree_avian_pb2, 'avian', 'PB2')
-plot_lbi_tree_new(tree_bovine_ha, 'bovine', 'HA')
-plot_lbi_tree_new(tree_avian_ha, 'avian', 'HA')
-plot_lbi_tree_new(tree_bovine_pb2, 'bovine', 'PB2')
-plot_lbi_tree_new(tree_avian_pb2, 'avian', 'PB2')
 ```
 
 ```{r lbi_vs_dms, echo=F, include=T, fig.height=10, fig.width=10}
 
 mutations_summed_dms %>% 
   ggplot(aes(x=dms_value_sum, y=lbi)) +
-  geom_point(alpha=0.2) +
+  geom_point(alpha=0.2)  +
   facet_wrap(vars(host, gene, dms_name), labeller = label_wrap_gen(multi_line=FALSE), scales='free_x', ncol=4)
 
 ```
