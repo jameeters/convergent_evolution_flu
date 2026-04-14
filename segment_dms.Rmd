@@ -20,6 +20,7 @@ library(ape)
 library(ggtree)
 library(phangorn)
 library(patchwork)
+library(ggnewscale)
 
 theme_set(theme_bw())
 setwd('/Users/james/Documents/convergent')
@@ -340,10 +341,6 @@ mutations_summed_dms_cows_vs_all %>% filter(host == 'non-bovine') %>%
 # Trees
 
 ```{r set_up_trees, include=F, echo=F}
-# tree_bovine_ha = read.nexus('out_bovine_b3.13_ha/ancestral/annotated_tree.nexus')
-# tree_avian_ha = read.nexus('out_avian_b3.13_ha/ancestral/annotated_tree.nexus')
-# tree_bovine_pb2 = read.nexus('out_bovine_b3.13_pb2/ancestral/annotated_tree.nexus')
-# tree_avian_pb2 = read.nexus('out_avian_b3.13_pb2/ancestral/annotated_tree.nexus')
 
 tree_bovine_ha = read.nexus('out_bovine_b3.13_ha/treetime/timetree.nexus')
 tree_avian_ha = read.nexus('out_avian_b3.13_ha/treetime/timetree.nexus')
@@ -741,7 +738,7 @@ plot_lbi_tree = function(tree, host_, gene_){
   lbi_values = local_branching_index %>% 
     filter(gene == gene_ & host == host_) %>% 
     select(accession, lbi)
-  p = ggtree(tree)
+  p = ggtree(tree, color='grey')
   p = p %<+% lbi_values +
       geom_tippoint(aes(color=lbi), size=2) +
       geom_nodepoint(aes(color=lbi), size=2) +
@@ -768,5 +765,233 @@ mutations_summed_dms %>%
 
 ```
 
+## SC2 comparison
+```{r lbi_sc2_comparison, include=T, echo=F, fig.width=15, fig.height=50}
+lbi_sc2 = read.csv('out_sc2_nextstrain/local_branching_index_shim.tsv', sep='\t') %>% 
+  rename(accession = node)
+
+tree_sc2 = read.nexus('out_sc2_nextstrain/nextstrain_ncov_open_global_6m_tree.nexus')
+
+lbi_sc2 = lbi_sc2 %>% 
+  left_join(
+  read.csv('out_sc2_nextstrain/metadata.tsv', sep='\t') %>% 
+    select(strain, Nextstrain_clade, pango_lineage) %>% 
+    rename(accession = strain),
+  by=join_by(accession)
+)
+
+lbi_sc2 = lbi_sc2 %>% 
+  mutate(pango_short = str_extract(pango_lineage, '[A-z]+(\\.\\d+){0,1}')) 
+
+rare_pango_shorts = lbi_sc2 %>% 
+  summarize(n = n(), .by = pango_short) %>% 
+  filter(n < 10) %>% 
+  select(pango_short) %>% 
+  unlist()
+  
+lbi_sc2 = lbi_sc2 %>% mutate(
+    pango_short = case_when(
+      pango_short %in% rare_pango_shorts ~ 'other (n < 10)',
+      .default = pango_short
+    )
+  )
+
+plot_lbi_tree_sc2 = function(tree, lbi_values){
+  ylim_expansion = round(0.01 * length(tree$tip.label))
+  ylim = c(-ylim_expansion, length(tree$tip.label) + ylim_expansion)
+  
+      
+  p = ggtree(tree, color='grey')
+  p = p %<+% lbi_values +
+      geom_tippoint(aes(color=pango_short), size=1.3, shape = 15 ) +
+      scale_color_discrete() +
+      guides(color=guide_legend(ncol = 1)) +
+      ggnewscale::new_scale_color() +
+      geom_nodepoint(aes(color=lbi), size=1.3) +
+      scale_color_viridis_c() +
+      ggtitle("SC2 LBI") +
+      theme(plot.title = element_text(size = 16, face = "bold", vjust = 0)) +
+      theme(panel.border = element_rect()) +
+      expand_limits(y = ylim) 
+
+  print(p)
+}
+# plot_lbi_tree_sc2(tree_sc2, lbi_sc2)
+
+```
+
+```{r lineage_props_by_node, echo=F, include=T, fig.width=60, fig.height=80}
+filter_to_descendant_tips = function(df, node) {
+  tip_idxs = unlist(Descendants(tree_sc2, node, type='tips'))
+  tip_labels = tree_sc2$tip.label[tip_idxs]
+  return(
+    df %>% filter(accession %in% tip_labels)
+  )
+}
+
+count_tips_pango = function() {
+  pango_counts = data.frame()
+  for (node in tree_sc2$node.label) {
+   
+    tips = filter_to_descendant_tips(lbi_sc2, node) %>% 
+      summarize(n_pango = n(), .by = pango_lineage)
+    
+    n_desc_tips = sum(tips$n_pango)
+    
+      
+      tips = tips %>% 
+        mutate(
+          n_desc_tips = n_desc_tips,
+          ancestor = node
+        )
+    pango_counts = pango_counts %>% bind_rows(tips)
+  }
+  pango_counts = pango_counts %>% 
+    left_join(
+      lbi_sc2 %>% 
+        select(accession, lbi), 
+      by = join_by(ancestor == accession)
+    ) %>% 
+    rename(ancestor_lbi = lbi)
+  return(pango_counts)
+}
+
+count_tips_pango_short = function() {
+  pango_counts = data.frame()
+  for (node in tree_sc2$node.label) {
+   
+    tips = filter_to_descendant_tips(lbi_sc2, node) %>% 
+      summarize(n_pango_short = n(), .by = pango_short)
+    
+    n_desc_tips = sum(tips$n_pango_short)
+    
+      
+      tips = tips %>% 
+        mutate(
+          n_desc_tips = n_desc_tips,
+          ancestor = node
+        )
+    pango_counts = pango_counts %>% bind_rows(tips)
+  }
+  pango_counts = pango_counts %>% 
+    left_join(
+      lbi_sc2 %>% 
+        select(accession, lbi), 
+      by = join_by(ancestor == accession)
+    ) %>% 
+    rename(ancestor_lbi = lbi)
+  return(pango_counts)
+}
+
+pango_counts = count_tips_pango()
+
+pango_counts %>%
+  filter(n_desc_tips >= 1000) %>% 
+  ggplot(aes(x = ancestor, y=n_pango/n_desc_tips)) +
+  geom_col(aes(fill=pango_lineage, group=ancestor), show.legend = F) +
+  guides()
+
+pango_counts %>%
+  filter(n_desc_tips >= 1000) %>% 
+  ggplot(aes(x=ancestor_lbi, y=n_pango/n_desc_tips)) +
+  geom_point(aes(color = pango_lineage), show.legend = T, alpha=0.2)
+
+median_lbi = pango_counts %>% 
+  select(ancestor, ancestor_lbi) %>% 
+  distinct() %>% 
+  summarize(mlbi = median(ancestor_lbi)) %>% 
+  pull
+
+pango_counts %>% 
+  mutate(pango_frac = n_pango/n_desc_tips) %>% 
+  pivot_wider(names_from = pango_lineage, values_from = pango_frac, names_prefix = 'frac_', values_fill = 0) %>%
+  pivot_longer(cols = starts_with('frac_'), names_to = 'pango_lineage', names_prefix = 'frac_', values_to = 'pango_frac') %>%
+  arrange(ancestor_lbi) %>% 
+  ggplot(aes(y=pango_lineage, x=ancestor)) +
+  geom_tile(aes(fill=pango_frac)) +
+  scale_fill_continuous(type='viridis') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size=16)) +
+  theme(axis.text.y = element_text(size=10)) +
+  scale_y_discrete(sec.axis = dup_axis()) +
+  scale_x_discrete(
+    labels = function(s){
+      lbis = pango_counts %>% 
+        arrange(ancestor_lbi) %>% 
+        filter(ancestor %in% s) %>% 
+        distinct(ancestor, ancestor_lbi) %>% 
+        select(ancestor_lbi) %>% 
+        pull %>% 
+        round(3)
+      for (i in seq(length(lbis))){
+        if (i %% 20 != 0) {
+          lbis[i] = ''
+        }
+      }
+      return(lbis)
+    }
+  )
+
+```
+
+```{r, include=T, echo=F, fig.width=60, fig.height=40}
+pango_short_counts = count_tips_pango_short()
+
+node_sample = pango_short_counts %>% 
+  select(ancestor) %>% 
+  unique() %>% 
+  sample_n(100)
+
+pango_short_counts %>%
+  arrange(ancestor_lbi) %>% 
+  inner_join(node_sample, by = join_by(ancestor)) %>%
+  ggplot(aes(x = ancestor, y=pango_short)) +
+  geom_col(aes(fill=pango_short, group=ancestor), show.legend = T) +
+  scale_x_discrete(
+    guide=guide_axis(angle=90), 
+    labels = function(s){
+      pango_short_counts %>% 
+        filter(ancestor %in% s) %>% 
+        distinct(ancestor, ancestor_lbi) %>% 
+        select(ancestor_lbi) %>% 
+        pull %>% 
+        round(3)
+    }
+  )
+
+pango_short_counts %>%
+  filter(n_desc_tips >= 1000) %>% 
+  ggplot(aes(x=ancestor_lbi, y=n_pango_short/n_desc_tips)) +
+  geom_point(aes(color = pango_short), show.legend = T, alpha=0.2)
+
+pango_short_counts %>% 
+  mutate(pango_frac = n_pango_short/n_desc_tips) %>% 
+  pivot_wider(names_from = pango_short, values_from = pango_frac, names_prefix = 'frac_', values_fill = 0) %>%
+  pivot_longer(cols = starts_with('frac_'), names_to = 'pango_short', names_prefix = 'frac_', values_to = 'pango_frac') %>%
+  arrange(ancestor_lbi) %>% 
+  ggplot(aes(y=pango_short, x=ancestor)) +
+  geom_tile(aes(fill=pango_frac)) +
+  scale_fill_continuous(type='viridis') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size=16)) +
+  theme(axis.text.y = element_text(size=14)) +
+  scale_y_discrete(sec.axis = dup_axis()) +
+  scale_x_discrete(
+    labels = function(s){
+      lbis = pango_short_counts %>%
+        arrange(ancestor_lbi) %>%
+        filter(ancestor %in% s) %>%
+        distinct(ancestor, ancestor_lbi) %>%
+        select(ancestor_lbi) %>%
+        pull %>%
+        round(3)
+      for (i in seq(length(lbis))){
+        if (i %% 20 != 0) {
+          lbis[i] = ''
+        }
+      }
+      return(lbis)
+    }
+  )
+
+```
 
 
